@@ -11,6 +11,9 @@ import { SummaryAgent, SUMMARY_AGENT_ID } from './ai/agents/summary.agent.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
 import type { RunStore } from './runtime/stores/run-store.js'
+import { MySQLArtifactStore } from './artifacts/artifact-store.mysql.js'
+import { MemoryArtifactStore } from './artifacts/artifact-store.memory.js'
+import type { ArtifactStore } from './artifacts/artifact-store.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -22,6 +25,7 @@ export type AppContainer = {
   a2aRouter: A2ARouter
   a2aPolicy: A2APolicy
   store: RunStore
+  artifactStore: ArtifactStore
 }
 
 function createStore(): RunStore {
@@ -33,11 +37,19 @@ function createStore(): RunStore {
   return new MemoryRunStore()
 }
 
+function createArtifactStore(): ArtifactStore {
+  if (env.DATABASE_URL) {
+    return new MySQLArtifactStore()
+  }
+  return new MemoryArtifactStore()
+}
+
 export function createContainer(): AppContainer {
   logger.info('[Container] Initializing application dependencies')
 
   // ─── 存储层（根据环境自动选择）───────────────────────────
   const store = createStore()
+  const artifactStore = createArtifactStore()
 
   // ─── ModelClient ─────────────────────────────────────────
   const modelClient = new VercelAIModelClient()
@@ -52,7 +64,7 @@ export function createContainer(): AppContainer {
 
   // ─── 专业 Agent 注册 ─────────────────────────────────────
   const researchAgent = new ResearchAgent(modelClient, store)
-  const summaryAgent = new SummaryAgent(modelClient, store)
+  const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
 
   a2aRouter.register({
     agentId: RESEARCH_AGENT_ID,
@@ -77,7 +89,7 @@ export function createContainer(): AppContainer {
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
   })
 
-  return { runManager, a2aClient, a2aRouter, a2aPolicy, store }
+  return { runManager, a2aClient, a2aRouter, a2aPolicy, store, artifactStore }
 }
 
 // 单例容器（在整个应用生命周期中共享）

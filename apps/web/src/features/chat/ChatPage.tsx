@@ -2,6 +2,7 @@ import { useState, useRef, type FormEvent } from 'react'
 import { post } from '../../lib/http.ts'
 import { useRunEvents } from '../runs/useRunEvents.ts'
 import { RunTimeline } from '../runs/RunTimeline.tsx'
+import { RunArtifactList } from '../runs/ArtifactPreview.tsx'
 
 // ============================================================
 // ChatPage — 主聊天界面 + RunTimeline
@@ -166,6 +167,21 @@ export function ChatPage() {
             </div>
           )}
         </div>
+
+        {/* 右侧：Artifact 面板（仅在有 Run 且已产出 Artifact 时显示）*/}
+        {activeRunId && isTerminated && (
+          <div
+            style={{
+              width: '340px',
+              background: '#0d1117',
+              borderLeft: '1px solid rgba(255,255,255,0.06)',
+              overflowY: 'auto',
+              flexShrink: 0,
+            }}
+          >
+            <RunArtifactList runId={activeRunId} />
+          </div>
+        )}
       </div>
 
       {/* 底部输入区 */}

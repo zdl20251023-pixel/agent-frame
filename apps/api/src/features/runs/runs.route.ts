@@ -174,11 +174,17 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     },
   )
 
-  // GET /runs/:runId/artifacts — 查询 Run 的产物（阶段 9 实现）
+  // GET /runs/:runId/artifacts — 查询 Run 的所有产物
   .get(
     '/:runId/artifacts',
-    async ({ params }) => {
-      return { runId: params.runId, artifacts: [] }
+    async ({ params, set }) => {
+      const run = await container.runManager.getRun(params.runId)
+      if (!run) {
+        set.status = 404
+        return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+      }
+      const artifacts = await container.artifactStore.listArtifactsByRun(params.runId)
+      return { runId: params.runId, artifacts, total: artifacts.length }
     },
     {
       params: t.Object({ runId: t.String() }),

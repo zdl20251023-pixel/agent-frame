@@ -42,3 +42,130 @@ body {
   33% { content: '··'; }
   66% { content: '···'; }
 }
+
+/* ─── Artifact 样式 ─────────────────────────────────────── */
+
+.artifact-loading {
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.artifact-error {
+  padding: 10px 14px;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #fca5a5;
+  margin: 8px 12px;
+}
+
+.artifact-preview {
+  margin: 10px 12px;
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(255,255,255,0.02);
+  transition: border-color 0.2s;
+}
+
+.artifact-preview:hover {
+  border-color: rgba(139,92,246,0.3);
+}
+
+.artifact-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  transition: background 0.15s;
+}
+
+.artifact-header:hover {
+  background: rgba(255,255,255,0.05);
+}
+
+.artifact-icon {
+  font-size: 16px;
+}
+
+.artifact-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #c4b5fd;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-meta {
+  font-size: 10px;
+  color: #6b7280;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.artifact-toggle {
+  font-size: 10px;
+  color: #4b5563;
+}
+
+.artifact-body {
+  padding: 14px;
+  animation: fade-in 0.2s ease;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.artifact-text p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: #d1d5db;
+  margin-bottom: 4px;
+}
+
+.artifact-code,
+.artifact-json {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #86efac;
+  background: rgba(0,0,0,0.3);
+  border-radius: 6px;
+  padding: 12px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.run-artifact-list {
+  padding: 12px 0 0;
+}
+
+.artifact-list-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.artifact-count {
+  background: rgba(139,92,246,0.2);
+  color: #a78bfa;
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+}

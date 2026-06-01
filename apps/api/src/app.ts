@@ -2,6 +2,7 @@ import { Elysia } from 'elysia'
 import { cors } from '@elysiajs/cors'
 import { runsRoute } from './features/runs/runs.route.js'
 import { agentsRoute } from './features/agents/agents.route.js'
+import { artifactsRoute } from './features/artifacts/artifacts.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
@@ -44,6 +45,7 @@ export function createApp() {
     // 功能路由
     .use(runsRoute)
     .use(agentsRoute)
+    .use(artifactsRoute)
 
   return app
 }
