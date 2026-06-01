@@ -11,7 +11,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:init": "bun run scripts/db-init.ts"
+    "db:init": "bun run scripts/db-init.ts",
+    "test": "bun test"
   },
   "dependencies": {
     "@agent-frame/shared": "workspace:*",

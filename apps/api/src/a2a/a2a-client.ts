@@ -39,9 +39,7 @@ export class A2AClient {
     context.depth++
 
     // ─── 3. 创建 Step 记录 ───────────────────────────────────
-    const stepId = generateStepId()
-    await this.stepManager.startStep({
-      id: stepId,
+    const step = await this.stepManager.startStep({
       runId,
       parentStepId: request.parentStepId,
       type: 'agent_call',
@@ -49,6 +47,7 @@ export class A2AClient {
       toAgentId: request.toAgentId,
       input: request.input,
     })
+    const stepId = step.id
 
     // ─── 4. 发出 agent.call.started ──────────────────────────
     await this.emitter.emit({
