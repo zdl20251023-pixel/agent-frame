@@ -3692,6 +3692,584 @@ MVP 阶段仍然不要实现以下内容：
 
 ---
 
+---
+
+## 41. Agent 输入输出与上下文管理设计
+
+本节用于补充不同 Agent 之间如何传递输入、输出和上下文。它不新增业务功能，而是明确框架层的输入输出契约，避免后续多 Agent、Workflow、第三方 Skill、MCP 接入后出现上下文混乱、结构漂移、token 爆炸和产物不可追踪的问题。
+
+### 41.1 核心结论
+
+不同 Agent 的输入输出不要依赖“把上游 Agent 的完整输出直接塞进下游 Agent 的 prompt”。推荐统一采用以下规则：
+
+```txt
+小数据：直接放入 A2ARequest.input / AgentInput.payload
+复杂结构：先保存为 ArtifactVersion，再传 ArtifactRef
+上下文：统一由 ContextBuilder 组装
+结构校验：由 AgentCapability.inputSchema / outputSchema 管理
+跨 Agent 传递：通过 A2ARequest + ArtifactRef + ContextRef 管理
+```
+
+一句话原则：
+
+> Agent 之间传递的不是随意 JSON，而是经过 schema 校验的输入、可追踪的 Artifact 引用，以及经过裁剪和权限检查的上下文。
+
+### 41.2 为什么不能直接把 Agent1 的复杂输出塞给 Agent2
+
+不推荐：
+
+```ts
+await scriptAgent.execute({
+  input: outlineAgentResult, // 不推荐：直接把上游复杂输出塞给下游 Agent
+})
+```
+
+主要问题：
+
+| 问题 | 影响 |
+|---|---|
+| 无版本 | 无法知道 Agent2 使用的是 Agent1 的哪个版本输出 |
+| 无追踪 | 无法从 Agent2 输出反查上游输入来源 |
+| 无校验 | Agent1 输出结构变化后，Agent2 可能静默失败 |
+| 上下文过大 | 大 JSON、长文本、剧本、报告会导致 token 爆炸 |
+| 无法复盘 | 失败后很难用同一份输入重跑 |
+| 无法裁剪 | Agent2 可能只需要部分内容，却接收全部内容 |
+| 权限不清 | Agent2 是否有权读取上游产物没有统一检查点 |
+
+推荐：
+
+```txt
+Agent1 输出复杂结构
+  -> outputSchema 校验
+  -> 保存为 ArtifactVersion
+  -> A2A 只传 ArtifactRef
+  -> ContextBuilder 按策略加载摘要、全文或 schema
+  -> Agent2 执行
+```
+
+### 41.3 输入输出分层原则
+
+#### 41.3.1 Direct Input：直接输入
+
+适合短小、简单、无需版本追踪的数据。
+
+示例：
+
+```ts
+const input = {
+  city: '北京',      // 城市名称，直接作为简单参数传递
+  date: '明天',      // 查询日期，直接作为简单参数传递
+}
+```
+
+适用数据：
+
+| 数据 | 是否适合直接传 |
+|---|---:|
+| 城市、日期、ID | 适合 |
+| 短文本指令 | 适合 |
+| 少量结构化参数 | 适合 |
+| 长篇文档 | 不适合 |
+| 剧本、大纲、分镜 | 不适合 |
+| 图片、音频、视频 | 不适合 |
+
+#### 41.3.2 ArtifactRef：复杂产物引用
+
+适合复杂结构、大文本、多版本产物和需要复用的 Agent 输出。
+
+示例：
+
+```ts
+export type ArtifactRef = {
+  artifactId: string       // Artifact ID，指向一个结构化产物
+  versionId?: string       // 可选：指定 ArtifactVersion；不传时默认读取 currentVersionId
+  type: string             // Artifact 类型，例如 outline、script、storyboard、report
+  title?: string           // 可选：可读标题，用于日志、事件和前端展示
+}
+```
+
+典型场景：
+
+```txt
+Agent1 生成短剧大纲
+  -> 保存为 Artifact: outline
+  -> 生成 ArtifactVersion: v1
+  -> Agent2 接收 ArtifactRef
+  -> ContextBuilder 加载该大纲的摘要或全文
+```
+
+#### 41.3.3 ContextRef：上下文引用
+
+适合声明本次 Agent 执行需要哪些上下文，而不是让 Agent 自己随意读取数据。
+
+```ts
+export type ContextRef = {
+  includeSessionMessages?: boolean        // 是否加载当前 Session 的历史消息
+  includeProjectMemory?: boolean          // 是否加载项目级长期 Memory
+  includeArtifacts?: ArtifactRef[]        // 需要加载的 Artifact 引用列表
+  maxTokens?: number                      // 本次上下文最大 token 预算
+  strategy?: 'summary' | 'full' | 'schema_only' // 上下文加载策略：摘要、全文、仅结构说明
+}
+```
+
+策略说明：
+
+| strategy | 作用 | 适合场景 |
+|---|---|---|
+| `summary` | 加载摘要或裁剪后的内容 | 大多数跨 Agent 场景 |
+| `full` | 加载完整内容 | 小型 Artifact 或强依赖场景 |
+| `schema_only` | 只加载结构说明和引用 | 下游只需要知道数据结构，不需要正文 |
+
+### 41.4 AgentCapability 中声明输入输出契约
+
+每个 Agent 必须声明自己能接收什么、输出什么，以及能消费或生成哪些 Artifact 类型。
+
+```ts
+export type AgentCapability = {
+  id: string                                  // Agent 唯一标识，例如 outline-agent
+  name: string                                // Agent 展示名称
+  description: string                         // Agent 能力说明，用于调度、文档和前端展示
+
+  inputSchema: unknown                        // 输入 schema，用于校验调用方传入的数据
+  outputSchema: unknown                       // 输出 schema，用于校验 Agent 返回的数据
+
+  inputArtifactTypes?: string[]               // 可选：允许作为输入的 Artifact 类型，例如 ['outline']
+  outputArtifactTypes?: string[]              // 可选：该 Agent 可能生成的 Artifact 类型，例如 ['script']
+
+  supportedModes: Array<'sync' | 'async' | 'stream'> // 支持同步、异步或流式调用模式
+  maxRuntimeMs: number                        // 最大运行时间，用于超时控制
+  costLevel: 'low' | 'medium' | 'high'         // 成本等级，用于预算和治理
+}
+```
+
+判断 Agent2 是否能消费 Agent1 输出时，不靠口头约定，而靠：
+
+```txt
+Agent1.outputArtifactTypes
+Agent2.inputArtifactTypes
+Agent1.outputSchema
+Agent2.inputSchema
+```
+
+### 41.5 统一 AgentInput / AgentOutput
+
+#### 41.5.1 AgentInput
+
+Agent 不应该接收随意结构。所有 Agent 执行入口建议统一为 `AgentInput<T>`。
+
+```ts
+export type AgentInput<T = unknown> = {
+  runId: string                         // 当前 Run ID，用于追踪一次 Agent 执行
+  stepId?: string                       // 当前 Step ID，用于定位执行步骤
+  traceId: string                       // 链路追踪 ID，用于日志、事件和错误定位
+
+  userId?: string                       // 当前用户 ID，用于权限、审计和数据隔离
+  projectId?: string                    // 可选：项目 ID，用于长期任务、Artifact 和 Memory 归属
+  sessionId?: string                    // 可选：会话 ID，用于聊天上下文归属
+
+  payload: T                            // 当前 Agent 的直接输入，小型结构化数据放这里
+
+  artifacts?: ArtifactRef[]             // 可选：上游 Agent 产物引用，避免直接传递大对象
+  context?: ContextRef                  // 可选：声明需要加载哪些上下文，以及加载策略
+  signal?: AbortSignal                  // 可选：取消信号，用于用户取消、超时或系统中断
+}
+```
+
+#### 41.5.2 AgentOutput
+
+Agent 不应该只返回字符串。Agent 输出应该区分即时结果、沉淀产物、候选记忆和用量信息。
+
+```ts
+export type AgentOutput<T = unknown> = {
+  output: T                              // Agent 的主要结构化输出，可被当前流程立即使用
+
+  artifacts?: ArtifactWriteInput[]       // 可选：需要保存为 Artifact / ArtifactVersion 的产物
+  memoryCandidates?: MemoryCandidate[]   // 可选：候选记忆，不直接写入长期 Memory
+  events?: AgentEvent[]                  // 可选：执行期间产生的事件，最终仍应归一化进入 EventStore
+
+  usage?: TokenUsage                     // 可选：token、耗时、成本统计，用于 usage 和 observability
+}
+```
+
+字段语义：
+
+| 字段 | 作用 |
+|---|---|
+| `output` | 给当前调用方立即使用的结构化结果 |
+| `artifacts` | 需要持久化、版本管理、复用或展示的产物 |
+| `memoryCandidates` | 可能进入长期 Memory 的候选内容，需要策略判断 |
+| `events` | 执行过程事件，最终归一化为框架事件 |
+| `usage` | 统计模型和工具调用成本 |
+
+### 41.6 ContextBuilder 统一上下文构造
+
+Agent 不应该自己随意拼 prompt 或随意读取 Artifact / Memory / Session。上下文应由统一的 `ContextBuilder` 构造。
+
+推荐目录：
+
+```txt
+apps/api/src/context/
+├─ context-builder.ts              # 统一构建 Agent 执行上下文
+├─ context-policy.ts               # 控制 Agent 能访问哪些上下文
+├─ context-compressor.ts           # 摘要、裁剪、压缩上下文
+├─ artifact-context-loader.ts      # 从 Artifact / ArtifactVersion 加载上下文
+├─ memory-context-loader.ts        # 从 Memory 加载长期上下文
+└─ session-context-loader.ts       # 从 Session 消息加载会话上下文
+```
+
+#### 41.6.1 BuildContextInput
+
+```ts
+export type BuildContextInput = {
+  runId: string                     // 当前 Run ID
+  agentId: string                   // 即将执行的目标 Agent ID
+  userId?: string                   // 当前用户 ID，用于权限判断
+  projectId?: string                // 项目 ID，用于限定 Artifact 和 Memory 范围
+  sessionId?: string                // 会话 ID，用于加载会话历史
+
+  payload: unknown                  // 本次直接输入
+  artifacts?: ArtifactRef[]         // 上游产物引用
+  context?: ContextRef              // 上下文加载策略
+}
+```
+
+#### 41.6.2 AgentExecutionContext
+
+```ts
+export type AgentExecutionContext = {
+  systemContext: string             // 系统级上下文，例如 Agent 角色、边界、工具说明、安全规则
+  taskContext: string               // 当前任务上下文，例如用户目标、当前阶段、任务约束
+  artifactContext?: string          // Artifact 摘要、全文或结构说明
+  memoryContext?: string            // 项目记忆、用户偏好、长期事实或约束
+  sessionContext?: string           // 会话历史摘要或最近消息
+  structuredInput: unknown          // 给 Agent 的结构化输入，不一定直接进入 prompt
+  tokenEstimate: number             // 预计 token 数，用于预算和上下文裁剪
+}
+```
+
+ContextBuilder 执行步骤：
+
+```txt
+1. 根据 artifactId / versionId 读取 ArtifactVersion
+2. 检查当前 user / agent / project 是否允许读取该 Artifact
+3. 根据 ContextRef.strategy 决定加载全文、摘要或 schema
+4. 加载 Session 摘要和 Project Memory
+5. 按 maxTokens 进行裁剪、摘要或压缩
+6. 组装 AgentExecutionContext
+7. 记录 context.loaded / context.truncated 等事件，方便调试
+```
+
+### 41.7 Agent1 复杂输出传给 Agent2 的标准流程
+
+假设 `outline-agent` 生成复杂短剧大纲，`script-agent` 需要基于该大纲生成第一集剧本。
+
+#### 第一步：Agent1 输出结构化结果
+
+```ts
+export type DramaOutline = {
+  title: string                       // 短剧标题
+  theme: string                       // 主题，例如逆袭、悬疑、家庭伦理
+  episodes: Array<{
+    episodeNo: number                 // 集数编号
+    hook: string                      // 本集开头钩子
+    conflict: string                  // 本集主要冲突
+    ending: string                    // 本集结尾悬念或反转
+    characters: string[]              // 本集涉及的角色列表
+  }>
+}
+```
+
+#### 第二步：校验 Agent1 输出
+
+```ts
+const validated = DramaOutlineSchema.parse(outlineOutput) // 使用 schema 校验模型输出结构
+```
+
+如果校验失败：
+
+```txt
+当前 step 标记 failed
+写入 output.validation.failed 事件
+不继续调用下游 Agent
+```
+
+#### 第三步：保存为 ArtifactVersion
+
+```ts
+const artifact = await artifactStore.createVersion({
+  runId,                              // 由哪次 Run 生成
+  stepId,                             // 由哪个 Step 生成
+  projectId,                          // 归属哪个 Project
+  type: 'outline',                    // Artifact 类型
+  title: '短剧大纲',                   // Artifact 展示标题
+  content: validated,                 // 已校验的结构化内容
+  metadata: {
+    agentId: 'outline-agent',         // 生成该产物的 Agent
+    outputSchema: 'DramaOutlineSchema@v1', // 使用的输出 schema 版本
+  },
+})
+```
+
+#### 第四步：A2A 调用 Agent2 时传 ArtifactRef
+
+```ts
+await a2aClient.callSync({
+  runId,                              // 当前父 Run ID
+  parentStepId: stepId,               // 当前父 Step ID
+  fromAgentId: 'outline-agent',       // 调用方 Agent
+  toAgentId: 'script-agent',          // 被调用方 Agent
+  mode: 'sync',                       // 当前使用同步 A2A
+  traceId,                            // 链路追踪 ID
+  input: {
+    episodeNo: 1,                     // 直接输入：只生成第几集
+  },
+  artifacts: [
+    {
+      artifactId: artifact.id,        // 传 Artifact ID，不直接传完整大纲
+      versionId: artifact.versionId,  // 指定版本，保证可复现
+      type: 'outline',                // 声明引用类型
+      title: '短剧大纲',               // 可选展示标题
+    },
+  ],
+  context: {
+    includeArtifacts: [
+      {
+        artifactId: artifact.id,      // 加载该 Artifact
+        versionId: artifact.versionId,// 加载该版本
+        type: 'outline',              // 类型为 outline
+      },
+    ],
+    strategy: 'summary',              // 默认加载摘要，避免上下文过大
+    maxTokens: 4000,                  // 限制本次上下文预算
+  },
+})
+```
+
+#### 第五步：Agent2 通过 ContextBuilder 加载上下文
+
+```ts
+const executionContext = await contextBuilder.build({
+  runId,                              // 当前 Run ID
+  agentId: 'script-agent',            // 目标 Agent ID
+  userId,                             // 当前用户 ID
+  projectId,                          // 当前项目 ID
+  payload: request.input,             // 直接输入，例如 episodeNo
+  artifacts: request.artifacts,       // 上游 Artifact 引用
+  context: request.context,           // 上下文加载策略
+})
+```
+
+执行后，`script-agent` 拿到的是：
+
+```txt
+直接输入：episodeNo = 1
+Artifact 上下文：短剧大纲摘要或全文
+Memory 上下文：项目设定、角色设定、风格约束
+System 上下文：script-agent 的角色和输出格式要求
+```
+
+### 41.8 Mermaid：Agent 输入输出与上下文传递流程
+
+```mermaid
+sequenceDiagram
+  participant A1 as Agent1
+  participant VS as OutputSchema Validator
+  participant AS as ArtifactStore
+  participant A2A as A2AClient
+  participant CB as ContextBuilder
+  participant CP as ContextPolicy
+  participant A2 as Agent2
+  participant ES as EventStore
+
+  A1->>VS: 输出复杂结构
+  VS-->>A1: 校验通过
+  A1->>AS: 保存 ArtifactVersion
+  AS-->>A1: 返回 artifactId + versionId
+  A1->>A2A: callSync(toAgentId=Agent2, input + ArtifactRef + ContextRef)
+  A2A->>CB: build(input + ArtifactRef + ContextRef)
+  CB->>CP: 检查 Agent2 是否允许读取上下文
+  CB->>AS: 按 versionId 加载 Artifact 摘要 / 全文 / schema
+  CB-->>A2A: AgentExecutionContext
+  A2A->>A2: execute(executionContext)
+  A2-->>A2A: AgentOutput
+  A2A->>ES: 写入 agent.call.completed / artifact.created
+```
+
+### 41.9 上下文分类
+
+| 上下文类型 | 来源 | 用途 | 是否进入 prompt |
+|---|---|---|---|
+| Direct Input | 当前请求 | 当前任务参数 | 是 |
+| Artifact Context | 上游产物 | 跨 Agent 传递结构化结果 | 视策略决定 |
+| Session Context | 会话消息 | 聊天连续性 | 摘要后进入 |
+| Memory Context | 项目/用户长期记忆 | 风格、偏好、设定、约束 | 选择性进入 |
+| System Context | Agent 配置 | 角色、工具、规则、安全限制 | 是 |
+
+最终 Agent 执行上下文通常由以下部分组成：
+
+```txt
+System Context
++ Task Context
++ Selected Artifact Context
++ Selected Memory Context
++ Selected Session Context
++ Direct Input
+```
+
+### 41.10 Schema 管理建议
+
+推荐目录：
+
+```txt
+packages/shared/src/schemas/
+├─ agents/
+│  ├─ outline-agent.schema.ts       # outline-agent 的输入输出 schema
+│  ├─ script-agent.schema.ts        # script-agent 的输入输出 schema
+│  └─ weather-agent.schema.ts       # weather-agent 的输入输出 schema
+├─ artifacts/
+│  ├─ outline.schema.ts             # outline Artifact 内容结构
+│  ├─ script.schema.ts              # script Artifact 内容结构
+│  └─ storyboard.schema.ts          # storyboard Artifact 内容结构
+└─ a2a/
+   ├─ a2a-request.schema.ts         # A2ARequest schema
+   └─ a2a-response.schema.ts        # A2AResponse schema
+```
+
+放置原则：
+
+| 类型 | schema 放置位置 |
+|---|---|
+| A2A 协议输入输出 | `packages/shared/src/schemas/a2a` |
+| Agent 输入输出 | `packages/shared/src/schemas/agents` |
+| Artifact 内容结构 | `packages/shared/src/schemas/artifacts` |
+| 后端内部结构 | `apps/api/src/**/schema.ts` |
+
+### 41.11 判断直接传还是 ArtifactRef
+
+| 数据类型 | 推荐方式 | 原因 |
+|---|---|---|
+| 城市、日期、ID、短文本 | 直接传 `payload` | 简单、低成本 |
+| 小型 JSON，且不需要复盘 | 可以直接传 | 成本低，链路简单 |
+| 小型 JSON，但需要复盘或复用 | 保存 Artifact 后传 ArtifactRef | 方便版本追踪 |
+| 长文本、大纲、剧本、报告 | ArtifactRef | 需要版本、追踪、裁剪 |
+| 图片、音频、视频 | ArtifactRef / ObjectStorageRef | 不应直接进入 A2A input |
+| 上游 Agent 的中间推理 | 默认不传 | 避免污染、安全风险和成本增加 |
+| Memory | ContextRef | 由 ContextBuilder 按策略加载 |
+| 会话历史 | ContextRef | 摘要后加载，避免 token 爆炸 |
+
+规则：
+
+> 只要 Agent1 的输出会被复用、回滚、展示、审计或作为多步流程输入，就保存为 ArtifactVersion，并通过 ArtifactRef 传递。
+
+### 41.12 MySQL 存储补充
+
+Artifact 与 ArtifactVersion 需要支持结构化内容、摘要、schema 版本和上游来源追踪。
+
+```sql
+CREATE TABLE artifacts (
+  id VARCHAR(64) PRIMARY KEY,                 -- Artifact 唯一 ID
+  project_id VARCHAR(64) NULL,                -- 所属 Project ID
+  current_version_id VARCHAR(64) NULL,        -- 当前使用的 ArtifactVersion ID
+  type VARCHAR(64) NOT NULL,                  -- Artifact 类型，例如 outline、script、storyboard
+  title VARCHAR(255) NULL,                    -- Artifact 展示标题
+  status VARCHAR(32) NOT NULL,                -- 状态，例如 draft、approved、archived
+  created_by_run_id VARCHAR(64) NOT NULL,     -- 创建该 Artifact 的 Run ID
+  created_by_step_id VARCHAR(64) NULL,        -- 创建该 Artifact 的 Step ID
+  created_at DATETIME NOT NULL,               -- 创建时间
+  updated_at DATETIME NOT NULL                -- 更新时间
+);
+```
+
+```sql
+CREATE TABLE artifact_versions (
+  id VARCHAR(64) PRIMARY KEY,                 -- ArtifactVersion 唯一 ID
+  artifact_id VARCHAR(64) NOT NULL,           -- 所属 Artifact ID
+  version INT NOT NULL,                       -- 版本号，从 1 开始递增
+  content JSON NOT NULL,                      -- 结构化内容，MySQL JSON 类型
+  content_summary TEXT NULL,                  -- 内容摘要，用于 ContextBuilder 降低 token 成本
+  schema_name VARCHAR(128) NULL,              -- 内容对应的 schema 名称
+  schema_version VARCHAR(32) NULL,            -- 内容对应的 schema 版本
+  created_by_run_id VARCHAR(64) NOT NULL,     -- 创建该版本的 Run ID
+  created_by_step_id VARCHAR(64) NULL,        -- 创建该版本的 Step ID
+  created_at DATETIME NOT NULL,               -- 创建时间
+
+  UNIQUE KEY uniq_artifact_version (artifact_id, version) -- 同一个 Artifact 下版本号唯一
+);
+```
+
+### 41.13 Workflow 场景下的输入输出传递
+
+Workflow 的每个 Stage 应明确声明输入和输出 Artifact 类型。
+
+```ts
+export type WorkflowStage = {
+  id: string                                  // 阶段 ID，例如 outline、script、review
+  agentId: string                             // 该阶段由哪个 Agent 执行
+  inputArtifactTypes?: string[]               // 该阶段需要哪些上游 Artifact 类型
+  outputArtifactTypes?: string[]              // 该阶段会产生哪些 Artifact 类型
+  contextStrategy?: 'summary' | 'full' | 'schema_only' // 上下文加载策略
+}
+```
+
+示例：
+
+```ts
+const shortDramaWorkflow = {
+  id: 'short-drama-workflow',                 // Workflow 模板 ID
+  stages: [
+    {
+      id: 'outline',                          // 第一阶段：生成大纲
+      agentId: 'outline-agent',               // 使用 outline-agent 执行
+      outputArtifactTypes: ['outline'],       // 产出 outline Artifact
+    },
+    {
+      id: 'script',                           // 第二阶段：生成剧本
+      agentId: 'script-agent',                // 使用 script-agent 执行
+      inputArtifactTypes: ['outline'],        // 需要读取 outline Artifact
+      outputArtifactTypes: ['script'],        // 产出 script Artifact
+      contextStrategy: 'summary',             // 默认读取 outline 摘要，避免上下文过大
+    },
+  ],
+}
+```
+
+WorkflowRunner 的职责：
+
+```txt
+1. 执行当前 Stage
+2. 校验 Stage 输出
+3. 保存 ArtifactVersion
+4. 根据下一个 Stage 的 inputArtifactTypes 找到上游 Artifact
+5. 构造 ArtifactRef 和 ContextRef
+6. 调用 ContextBuilder
+7. 执行下游 Agent
+```
+
+### 41.14 输入输出和上下文管理风险点
+
+| 风险 | 说明 | 建议 |
+|---|---|---|
+| 上下文全部塞给下游 Agent | token 成本高，且容易污染下游判断 | 使用 ContextBuilder 摘要、裁剪和策略加载 |
+| Agent 自己随意读取 Artifact | 权限和审计不可控 | 统一通过 ContextPolicy 检查 |
+| 复杂结构没有 schema | 输出格式漂移，链路容易断 | 关键 Artifact 必须有 schema_name / schema_version |
+| 默认写入 Memory | 容易污染长期上下文 | 使用 memoryCandidates + MemoryPolicy |
+| 只传内存对象，不落库 | 无法复盘、无法重试 | 复杂产物保存 ArtifactVersion |
+| 不传 versionId | 下游输入不可复现 | 跨 Agent 传 Artifact 时尽量指定 versionId |
+
+### 41.15 最佳实践约束
+
+框架应尽量强制以下规则：
+
+1. 所有 Agent 必须声明 `inputSchema` 和 `outputSchema`。
+2. 所有跨 Agent 的复杂数据必须通过 `ArtifactRef` 传递。
+3. 所有上下文必须通过 `ContextBuilder` 构造。
+4. 所有 ArtifactVersion 必须记录 `createdByRunId`、`createdByStepId`、`schemaName`、`schemaVersion`。
+5. 所有 A2A 调用必须记录 `inputRef`、`outputRef`、`traceId`。
+6. 所有 ContextBuilder 加载行为必须经过 `ContextPolicy` 权限检查。
+7. 所有进入下游 Agent 的上下文都应有 `maxTokens` 或预算限制。
+8. 所有可能写入长期 Memory 的内容都先进入 `memoryCandidates`，不要自动写入。
+
+
 ## 附录：新人理解与维护建议
 
 本附录不新增框架功能，只用于帮助新人理解、维护和扩展本文档。
