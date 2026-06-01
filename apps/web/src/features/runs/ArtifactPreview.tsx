@@ -142,11 +142,11 @@ export function RunArtifactList({ runId, className }: ArtifactListProps) {
     <div
       className={`run-artifact-list ${className ?? ''}`}
       style={{
-        width: '340px',
-        background: '#0d1117',
-        borderLeft: '1px solid rgba(255,255,255,0.06)',
-        overflowY: 'auto',
-        flexShrink: 0,
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.06)',
+        borderRadius: '8px',
+        margin: '0 12px 16px 12px',
+        overflow: 'hidden',
       }}
     >
       <div className="artifact-list-title">
