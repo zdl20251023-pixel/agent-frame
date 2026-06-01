@@ -1,4 +1,3 @@
-import { useEffect, useRef } from 'react'
 import type { AgentEvent } from '@agent-frame/shared'
 import { AgentEventCard } from './AgentEventCard.tsx'
 
@@ -7,6 +6,7 @@ import { AgentEventCard } from './AgentEventCard.tsx'
 // ============================================================
 
 type Props = {
+  userMessage?: string
   events: AgentEvent[]
   isConnected: boolean
   isTerminated: boolean
@@ -62,14 +62,7 @@ function StatusBadge({ connected, terminated }: { connected: boolean; terminated
   return null
 }
 
-export function RunTimeline({ events, isConnected, isTerminated, fullText, runId }: Props) {
-  const bottomRef = useRef<HTMLDivElement>(null)
-
-  // 自动滚动到底部
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [events.length])
-
+export function RunTimeline({ userMessage, events, isConnected, isTerminated, fullText, runId }: Props) {
   if (!runId) return null
 
   // 过滤 message.delta，分组展示
@@ -81,8 +74,7 @@ export function RunTimeline({ events, isConnected, isTerminated, fullText, runId
         display: 'flex',
         flexDirection: 'column',
         gap: '0',
-        height: '100%',
-        overflow: 'hidden',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
       }}
     >
       {/* 头部 */}
@@ -110,11 +102,34 @@ export function RunTimeline({ events, isConnected, isTerminated, fullText, runId
       {/* 事件列表 */}
       <div
         style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '8px',
+          padding: '16px 12px',
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
+        {/* 用户请求气泡 */}
+        {userMessage && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '20px' }}>
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                padding: '12px 18px',
+                borderRadius: '16px 16px 2px 16px',
+                color: '#fff',
+                maxWidth: '85%',
+                fontSize: '14px',
+                lineHeight: 1.6,
+                boxShadow: '0 4px 16px rgba(99,102,241,0.25)',
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+              }}
+            >
+              <div style={{ fontSize: '11px', opacity: 0.8, marginBottom: '4px', fontWeight: 600 }}>User Request</div>
+              {userMessage}
+            </div>
+          </div>
+        )}
+
         {/* 系统事件 */}
         {nonDeltaEvents.map((event, i) => (
           <AgentEventCard key={`${event.type}-${i}`} event={event} index={i} />
@@ -172,7 +187,8 @@ export function RunTimeline({ events, isConnected, isTerminated, fullText, runId
           </div>
         )}
 
-        <div ref={bottomRef} />
+        {/* 底部占位 */}
+        <div style={{ height: '10px' }} />
       </div>
 
       {/* 底部统计 */}

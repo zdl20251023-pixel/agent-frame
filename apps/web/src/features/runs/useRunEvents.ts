@@ -40,6 +40,7 @@ export function useRunEvents(runId: string | null): RunEventState {
         }
         if (isTerminalEvent(event)) {
           setIsTerminated(true)
+          cleanupRef.current?.()
         }
       },
       () => setIsConnected(false),

@@ -1,8 +1,6 @@
-import { useState, useRef, type FormEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { post } from '../../lib/http.ts'
-import { useRunEvents } from '../runs/useRunEvents.ts'
-import { RunTimeline } from '../runs/RunTimeline.tsx'
-import { RunArtifactList } from '../runs/ArtifactPreview.tsx'
+import { RunMessageItem } from '../runs/RunMessageItem.tsx'
 
 // ============================================================
 // ChatPage — 主聊天界面 + RunTimeline
@@ -16,27 +14,40 @@ type CreateRunResponse = {
 
 export function ChatPage() {
   const [input, setInput] = useState('')
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
+  const [sessionRuns, setSessionRuns] = useState<{ runId: string; userMessage: string }[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const feedRef = useRef<HTMLDivElement>(null)
 
-  const { events, isConnected, isTerminated, fullText } = useRunEvents(activeRunId)
+  // 自动滚动到底部
+  useEffect(() => {
+    const el = feedRef.current
+    if (!el) return
+    const observer = new MutationObserver(() => {
+      const isScrolledUp = el.scrollHeight - el.scrollTop - el.clientHeight > 100
+      if (!isScrolledUp) {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
+      }
+    })
+    observer.observe(el, { childList: true, subtree: true, characterData: true })
+    return () => observer.disconnect()
+  }, [])
 
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault()
-    if (!input.trim() || isSubmitting) return
+    const message = input.trim()
+    if (!message || isSubmitting) return
 
     setError(null)
     setIsSubmitting(true)
-    setActiveRunId(null)
 
     try {
       const result = await post<CreateRunResponse>('/runs', {
-        input: { message: input.trim() },
+        input: { message },
         agentId: 'supervisor-agent',
       })
-      setActiveRunId(result.runId)
+      setSessionRuns((prev) => [...prev, { runId: result.runId, userMessage: message }])
       setInput('')
       textareaRef.current?.focus()
     } catch (err) {
@@ -110,76 +121,37 @@ export function ChatPage() {
 
         {/* 状态指示器 */}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-          {activeRunId && !isTerminated && (
-            <span
-              style={{
-                fontSize: '11px',
-                padding: '3px 10px',
-                borderRadius: '999px',
-                background: 'rgba(99,102,241,0.15)',
-                color: '#818cf8',
-                border: '1px solid rgba(99,102,241,0.3)',
-              }}
-            >
-              {isConnected ? '⚡ 运行中' : '⏳ 等待中'}
-            </span>
-          )}
         </div>
       </header>
 
       {/* 主内容区 */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden', gap: '1px', background: 'rgba(255,255,255,0.04)' }}>
-        {/* 左侧：时间线 */}
-        <div
-          style={{
-            flex: 1,
-            background: '#0f1117',
-            overflow: 'hidden',
-            display: 'flex',
-            flexDirection: 'column',
-          }}
-        >
-          {activeRunId ? (
-            <RunTimeline
-              events={events}
-              isConnected={isConnected}
-              isTerminated={isTerminated}
-              fullText={fullText}
-              runId={activeRunId}
-            />
-          ) : (
-            <div
-              style={{
-                flex: 1,
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '12px',
-                color: '#4b5563',
-              }}
-            >
-              <div style={{ fontSize: '40px', opacity: 0.4 }}>⚡</div>
-              <div style={{ fontSize: '14px' }}>发送消息开始一次 Run</div>
-              <div style={{ fontSize: '12px', color: '#374151' }}>
-                SupervisorAgent 将自动调用 ResearchAgent 和 SummaryAgent
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* 右侧：Artifact 面板（仅在有 Run 且已产出 Artifact 时显示）*/}
-        {activeRunId && isTerminated && (
+      <div 
+        ref={feedRef}
+        style={{ flex: 1, overflowY: 'auto', background: '#0f1117' }}
+      >
+        {sessionRuns.length === 0 ? (
           <div
             style={{
-              width: '340px',
-              background: '#0d1117',
-              borderLeft: '1px solid rgba(255,255,255,0.06)',
-              overflowY: 'auto',
-              flexShrink: 0,
+              height: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '12px',
+              color: '#4b5563',
             }}
           >
-            <RunArtifactList runId={activeRunId} />
+            <div style={{ fontSize: '40px', opacity: 0.4 }}>⚡</div>
+            <div style={{ fontSize: '14px' }}>发送消息开始对话</div>
+            <div style={{ fontSize: '12px', color: '#374151' }}>
+              SupervisorAgent 将自动调用 ResearchAgent 和 SummaryAgent
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {sessionRuns.map((run) => (
+              <RunMessageItem key={run.runId} runId={run.runId} userMessage={run.userMessage} />
+            ))}
           </div>
         )}
       </div>

@@ -79,6 +79,8 @@ export class SupervisorAgent {
           timestamp: now(),
         })
       }
+      log.info('[SupervisorAgent] Task completed (direct answer)', { answerLength: plan.directAnswer.length })
+      logger.info(`[UserMessage] 最终返回给用户的回答: ${plan.directAnswer}`)
       return { output: { answer: plan.directAnswer } }
     }
 
@@ -144,6 +146,7 @@ export class SupervisorAgent {
     }
 
     log.info('[SupervisorAgent] Task completed', { answerLength: answer.length })
+    logger.info(`[UserMessage] 最终返回给用户的回答: ${answer}`)
     return { output: { answer } }
   }
 }

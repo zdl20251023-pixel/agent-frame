@@ -114,7 +114,7 @@ export class VercelAIModelClient implements ModelClient {
 
       for await (const part of result.fullStream) {
         if (part.type === 'text-delta') {
-          yield { type: 'text.delta', delta: part.textDelta, timestamp: now() }
+          yield { type: 'text.delta', delta: (part as any).text, timestamp: now() }
         } else if (part.type === 'finish') {
           yield {
             type: 'model.completed',

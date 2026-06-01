@@ -51,10 +51,6 @@ export function ArtifactPreview({ artifactId, className }: ArtifactPreviewProps)
   if (error) return <div className="artifact-error">⚠️ 产物加载失败: {error}</div>
   if (!content) return null
 
-  const contentStr =
-    typeof content.content === 'string'
-      ? content.content
-      : JSON.stringify(content.content, null, 2)
 
   return (
     <div className={`artifact-preview ${className ?? ''}`}>
@@ -143,7 +139,16 @@ export function RunArtifactList({ runId, className }: ArtifactListProps) {
   if (loading || artifacts.length === 0) return null
 
   return (
-    <div className={`run-artifact-list ${className ?? ''}`}>
+    <div
+      className={`run-artifact-list ${className ?? ''}`}
+      style={{
+        width: '340px',
+        background: '#0d1117',
+        borderLeft: '1px solid rgba(255,255,255,0.06)',
+        overflowY: 'auto',
+        flexShrink: 0,
+      }}
+    >
       <div className="artifact-list-title">
         <span>📎 产物</span>
         <span className="artifact-count">{artifacts.length}</span>

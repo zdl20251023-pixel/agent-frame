@@ -39,6 +39,9 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/',
     async ({ body, set }) => {
       try {
+        const message = typeof body.input === 'object' && body.input !== null ? (body.input as any).message : JSON.stringify(body.input)
+        logger.info(`[UserMessage] 收到前端发送的消息: ${message}`)
+        
         const run = await container.runManager.createRun({
           input: body.input,
           agentId: body.agentId,
@@ -125,12 +128,13 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
         return { runId: params.runId, events, total: events.length }
       }
 
-      // 默认：SSE 实时流
-      set.headers['Content-Type'] = 'text/event-stream'
-      set.headers['Cache-Control'] = 'no-cache'
-      set.headers['Connection'] = 'keep-alive'
-      set.headers['X-Accel-Buffering'] = 'no'
-      set.headers['Access-Control-Allow-Origin'] = '*'
+      const headers = {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      }
 
       logger.info('[runs.route] SSE subscription started', { runId: params.runId })
 
@@ -138,7 +142,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
       if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
         const pastEvents = await container.store.listEvents(params.runId)
         const encoder = new TextEncoder()
-        return new ReadableStream({
+        const stream = new ReadableStream({
           start(controller) {
             for (const event of pastEvents) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
@@ -146,9 +150,10 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
             controller.close()
           },
         })
+        return new Response(stream, { headers })
       }
 
-      return createSseStream(params.runId)
+      return new Response(createSseStream(params.runId), { headers })
     },
     {
       params: t.Object({ runId: t.String() }),
