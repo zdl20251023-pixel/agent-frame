@@ -1,4 +1,5 @@
 import { MemoryRunStore } from './runtime/stores/memory-run-store.js'
+import { MySQLRunStore } from './runtime/stores/mysql-run-store.js'
 import { RunManager } from './runtime/run-manager.js'
 import { A2APolicy } from './a2a/a2a-policy.js'
 import { A2ARouter } from './a2a/a2a-router.js'
@@ -8,7 +9,8 @@ import { SupervisorAgent, SUPERVISOR_AGENT_ID } from './ai/agents/supervisor.age
 import { ResearchAgent, RESEARCH_AGENT_ID } from './ai/agents/research.agent.js'
 import { SummaryAgent, SUMMARY_AGENT_ID } from './ai/agents/summary.agent.js'
 import { logger } from './shared/observability/logger.js'
-
+import { env } from './shared/config/env.js'
+import type { RunStore } from './runtime/stores/run-store.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -19,13 +21,23 @@ export type AppContainer = {
   a2aClient: A2AClient
   a2aRouter: A2ARouter
   a2aPolicy: A2APolicy
+  store: RunStore
+}
+
+function createStore(): RunStore {
+  if (env.DATABASE_URL) {
+    logger.info('[Container] Using MySQLRunStore')
+    return new MySQLRunStore()
+  }
+  logger.warn('[Container] DATABASE_URL not set, falling back to MemoryRunStore')
+  return new MemoryRunStore()
 }
 
 export function createContainer(): AppContainer {
   logger.info('[Container] Initializing application dependencies')
 
-  // ─── 存储层 ──────────────────────────────────────────────
-  const store = new MemoryRunStore()
+  // ─── 存储层（根据环境自动选择）───────────────────────────
+  const store = createStore()
 
   // ─── ModelClient ─────────────────────────────────────────
   const modelClient = new VercelAIModelClient()
@@ -62,9 +74,10 @@ export function createContainer(): AppContainer {
 
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
+    storeType: env.DATABASE_URL ? 'mysql' : 'memory',
   })
 
-  return { runManager, a2aClient, a2aRouter, a2aPolicy }
+  return { runManager, a2aClient, a2aRouter, a2aPolicy, store }
 }
 
 // 单例容器（在整个应用生命周期中共享）
