@@ -1,5 +1,7 @@
 import { openai } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
+import { google } from '@ai-sdk/google'
+import { deepseek } from '@ai-sdk/deepseek'
 import { env } from '../shared/config/env.js'
 import type { LanguageModel } from 'ai'
 
@@ -22,10 +24,24 @@ export function createAnthropicProvider() {
   return anthropic
 }
 
+export function createDeepseekProvider() {
+  if (!env.DEEPSEEK_API_KEY) {
+    throw new Error('DEEPSEEK_API_KEY is not set')
+  }
+  return deepseek
+}
+
+export function createGoogleProvider() {
+  if (!env.GEMINI_API_KEY) {
+    throw new Error('GEMINI_API_KEY is not set')
+  }
+  return google
+}
+
 // 模型定义结构
 export type ModelDef = {
   model: LanguageModel
-  provider: 'openai' | 'anthropic'
+  provider: 'openai' | 'anthropic' | 'deepseek' | 'google'
   actualModelId: string
   temperature?: number
   maxTokens?: number

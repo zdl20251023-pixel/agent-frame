@@ -1,19 +1,49 @@
 import { openai } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
+import { google } from '@ai-sdk/google'
+import { deepseek } from '@ai-sdk/deepseek'
 import type { ModelDef } from './providers.js'
 
 // ============================================================
 // 模型别名注册表
 // 上层 Agent 使用别名（如 fast.chat），不使用 provider model id
-// 这里是唯一需要知道具体 model id 的地方
 // ============================================================
+
+import { env } from '../shared/config/env.js'
+
+// 根据环境变量动态选择默认模型，偏好顺序：DeepSeek -> Gemini -> OpenAI -> Anthropic
+let defaultFastModel: any = openai('gpt-4o-mini')
+let defaultFastProvider: any = 'openai'
+let defaultFastId = 'gpt-4o-mini'
+
+let defaultMediumModel: any = openai('gpt-4o')
+let defaultMediumProvider: any = 'openai'
+let defaultMediumId = 'gpt-4o'
+
+if (env.DEEPSEEK_API_KEY) {
+  defaultFastModel = deepseek('deepseek-chat')
+  defaultFastProvider = 'deepseek'
+  defaultFastId = 'deepseek-chat'
+  
+  defaultMediumModel = deepseek('deepseek-reasoner')
+  defaultMediumProvider = 'deepseek'
+  defaultMediumId = 'deepseek-reasoner'
+} else if (env.GEMINI_API_KEY) {
+  defaultFastModel = google('gemini-1.5-flash')
+  defaultFastProvider = 'google'
+  defaultFastId = 'gemini-1.5-flash'
+  
+  defaultMediumModel = google('gemini-1.5-pro')
+  defaultMediumProvider = 'google'
+  defaultMediumId = 'gemini-1.5-pro'
+}
 
 export const models: Record<string, ModelDef> = {
   // ─── 快速对话型 ────────────────────────────────────────────
   'fast.chat': {
-    model: openai('gpt-4o-mini'),
-    provider: 'openai',
-    actualModelId: 'gpt-4o-mini',
+    model: defaultFastModel,
+    provider: defaultFastProvider,
+    actualModelId: defaultFastId,
     temperature: 0.7,
     maxTokens: 2048,
     costLevel: 'low',
@@ -21,9 +51,9 @@ export const models: Record<string, ModelDef> = {
 
   // ─── 通用能力型 ────────────────────────────────────────────
   'creative.medium': {
-    model: openai('gpt-4.1-mini'),
-    provider: 'openai',
-    actualModelId: 'gpt-4.1-mini',
+    model: defaultMediumModel,
+    provider: defaultMediumProvider,
+    actualModelId: defaultMediumId,
     temperature: 0.7,
     maxTokens: 4096,
     costLevel: 'medium',
@@ -31,9 +61,9 @@ export const models: Record<string, ModelDef> = {
 
   // ─── 强推理型 ──────────────────────────────────────────────
   'reasoning.high': {
-    model: openai('gpt-4.1'),
-    provider: 'openai',
-    actualModelId: 'gpt-4.1',
+    model: defaultMediumModel, // R1/Pro/GPT-4o
+    provider: defaultMediumProvider,
+    actualModelId: defaultMediumId,
     temperature: 0.3,
     maxTokens: 8192,
     costLevel: 'high',
@@ -57,11 +87,47 @@ export const models: Record<string, ModelDef> = {
     costLevel: 'medium',
   },
 
+  // ─── DeepSeek 系列 ─────────────────────────────────────────
+  'deepseek.chat': {
+    model: deepseek('deepseek-chat'),
+    provider: 'deepseek',
+    actualModelId: 'deepseek-chat',
+    temperature: 0.7,
+    maxTokens: 8192,
+    costLevel: 'low',
+  },
+  'deepseek.reasoner': {
+    model: deepseek('deepseek-reasoner'),
+    provider: 'deepseek',
+    actualModelId: 'deepseek-reasoner',
+    temperature: 0.7,
+    maxTokens: 8192,
+    costLevel: 'medium',
+  },
+
+  // ─── Gemini 系列 ───────────────────────────────────────────
+  'gemini.flash': {
+    model: google('gemini-1.5-flash'),
+    provider: 'google',
+    actualModelId: 'gemini-1.5-flash',
+    temperature: 0.7,
+    maxTokens: 8192,
+    costLevel: 'low',
+  },
+  'gemini.pro': {
+    model: google('gemini-1.5-pro'),
+    provider: 'google',
+    actualModelId: 'gemini-1.5-pro',
+    temperature: 0.7,
+    maxTokens: 8192,
+    costLevel: 'medium',
+  },
+
   // ─── 默认 ──────────────────────────────────────────────────
   'default': {
-    model: openai('gpt-4o-mini'),
-    provider: 'openai',
-    actualModelId: 'gpt-4o-mini',
+    model: defaultFastModel,
+    provider: defaultFastProvider,
+    actualModelId: defaultFastId,
     temperature: 0.7,
     maxTokens: 2048,
     costLevel: 'low',

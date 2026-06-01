@@ -22,6 +22,8 @@ export const env = {
   // 模型 Provider
   OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '',
   ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '',
+  DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY ?? '',
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY ?? process.env.GOOGLE_GENERATIVE_AI_API_KEY ?? '',
 
   // 数据库
   DATABASE_URL: process.env.DATABASE_URL ?? '',
@@ -48,7 +50,7 @@ export const env = {
 
 export function validateEnv() {
   // 至少需要一个模型 Provider
-  if (!env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY) {
+  if (!env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY && !env.DEEPSEEK_API_KEY && !env.GEMINI_API_KEY) {
     console.warn('[env] Warning: No model provider API key configured. AI calls will fail.')
   }
   if (!env.DATABASE_URL) {
