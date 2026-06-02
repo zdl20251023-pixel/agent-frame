@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "bun run --watch src/server.ts",
+    "dev": "nodemon --watch src --watch ../../packages/shared/src --ext ts,json --exec \"bun run src/server.ts\"",
     "start": "bun run src/server.ts",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
@@ -30,6 +30,7 @@
   "devDependencies": {
     "drizzle-kit": "^0.31.0",
     "@types/bun": "^1.2.0",
+    "nodemon": "^3.1.0",
     "typescript": "^5.5.0"
   }
 }
