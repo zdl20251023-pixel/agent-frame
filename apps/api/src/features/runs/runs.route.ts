@@ -3,26 +3,39 @@ import { container } from '../../container.js'
 import { createSseStream } from '../../shared/realtime/sse.handler.js'
 import { AppError, isAppError } from '../../shared/errors/app-error.js'
 import { logger } from '../../shared/observability/logger.js'
+import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
+import { sessionsService } from '../sessions/sessions.service.js'
+
+sessionsService.setRunStore(container.store)
 
 // ============================================================
-// Runs Feature — HTTP API 入口
+// Runs Feature — HTTP API 入口（需登录）
 // ============================================================
+
+async function assertRunAccess(runId: string, userId: string) {
+  await sessionsService.assertRunOwnedByUser(runId, userId)
+}
+
+function extractMessage(input: unknown): string {
+  if (input && typeof input === 'object' && input !== null && 'message' in input) {
+    const msg = (input as { message?: unknown }).message
+    if (typeof msg === 'string') return msg
+  }
+  return ''
+}
 
 export const runsRoute = new Elysia({ prefix: '/runs' })
+  .use(requireAuthPlugin)
 
-  // GET /runs — 查询 Run 历史列表（MySQL 下持久化可用）
   .get(
     '/',
-    async ({ query, set }) => {
+    async ({ authUser, query, set }) => {
       try {
         const limit = Math.min(Number(query.limit ?? 20), 100)
-        const runs = await container.store.listRuns(limit)
+        const runs = await container.store.listRunsByUser(authUser!.id, limit)
         return { runs, total: runs.length }
       } catch (err) {
-        logger.error('[runs.route] GET /runs failed', {
-          errorCode: 'INTERNAL_ERROR',
-        })
-        console.error('[GET /runs] error:', err)
+        logger.error('[runs.route] GET /runs failed', { errorCode: 'INTERNAL_ERROR' })
         set.status = 500
         return { code: 'INTERNAL_ERROR', message: String(err) }
       }
@@ -34,28 +47,36 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     },
   )
 
-  // POST /runs — 创建并启动一次 Run
   .post(
     '/',
-    async ({ body, set }) => {
-      try {              
+    async ({ authUser, body, set }) => {
+      try {
+        const userId = authUser!.id
+        const sessionId = await sessionsService.resolveSessionId(userId, body.sessionId)
+        const message = extractMessage(body.input)
+
         const run = await container.runManager.createRun({
           input: body.input,
           agentId: body.agentId,
-          userId: body.userId ?? 'dev-user',
+          userId,
           projectId: body.projectId,
-          sessionId: body.sessionId,
+          sessionId,
         })
+
+        await sessionsService.touchSession(sessionId)
+        if (message) {
+          await sessionsService.maybeSetTitleFromMessage(sessionId, userId, message)
+        }
 
         set.status = 201
         return {
           runId: run.id,
           traceId: run.traceId,
           status: run.status,
+          sessionId,
           createdAt: run.createdAt,
         }
       } catch (err) {
-        console.error('[POST /runs] error:', err)
         if (isAppError(err)) {
           set.status = err.statusCode
           return err.toJSON()
@@ -69,88 +90,100 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
       body: t.Object({
         input: t.Any(),
         agentId: t.Optional(t.String()),
-        userId: t.Optional(t.String()),
         projectId: t.Optional(t.String()),
         sessionId: t.Optional(t.String()),
       }),
     },
   )
 
-  // GET /runs/:runId — 查询 Run 状态
   .get(
     '/:runId',
-    async ({ params, set }) => {
-      const run = await container.runManager.getRun(params.runId)
-      if (!run) {
-        set.status = 404
-        return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+    async ({ authUser, params, set }) => {
+      try {
+        await assertRunAccess(params.runId, authUser!.id)
+        const run = await container.runManager.getRun(params.runId)
+        if (!run) {
+          set.status = 404
+          return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+        }
+        return run
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
       }
-      return run
     },
-    {
-      params: t.Object({ runId: t.String() }),
-    },
+    { params: t.Object({ runId: t.String() }) },
   )
 
-  // GET /runs/:runId/steps — 查询 Run 的所有 Step（调用链追踪）
   .get(
     '/:runId/steps',
-    async ({ params, set }) => {
-      const run = await container.runManager.getRun(params.runId)
-      if (!run) {
-        set.status = 404
-        return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+    async ({ authUser, params, set }) => {
+      try {
+        await assertRunAccess(params.runId, authUser!.id)
+        const steps = await container.store.listSteps(params.runId)
+        return { runId: params.runId, steps }
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
       }
-      const steps = await container.store.listSteps(params.runId)
-      return { runId: params.runId, steps }
     },
-    {
-      params: t.Object({ runId: t.String() }),
-    },
+    { params: t.Object({ runId: t.String() }) },
   )
 
-  // GET /runs/:runId/events — SSE 订阅实时事件流 / 回放历史事件
   .get(
     '/:runId/events',
-    async ({ params, query, set }) => {
-      const run = await container.runManager.getRun(params.runId)
-      if (!run) {
-        set.status = 404
-        return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+    async ({ authUser, params, query, set }) => {
+      try {
+        await assertRunAccess(params.runId, authUser!.id)
+        const run = await container.runManager.getRun(params.runId)
+        if (!run) {
+          set.status = 404
+          return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+        }
+
+        if (query.replay === 'true') {
+          const events = await container.store.listEvents(params.runId)
+          return { runId: params.runId, events, total: events.length }
+        }
+
+        const headers = {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          Connection: 'keep-alive',
+          'X-Accel-Buffering': 'no',
+          'Access-Control-Allow-Origin': '*',
+        }
+
+        logger.info('[runs.route] SSE subscription started', { runId: params.runId })
+
+        if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+          const pastEvents = await container.store.listEvents(params.runId)
+          const encoder = new TextEncoder()
+          const stream = new ReadableStream({
+            start(controller) {
+              for (const event of pastEvents) {
+                controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+              }
+              controller.close()
+            },
+          })
+          return new Response(stream, { headers })
+        }
+
+        return new Response(createSseStream(params.runId), { headers })
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
       }
-
-      // replay=true：返回历史事件 JSON 数组（用于查询已完成的 Run）
-      if (query.replay === 'true') {
-        const events = await container.store.listEvents(params.runId)
-        return { runId: params.runId, events, total: events.length }
-      }
-
-      const headers = {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'X-Accel-Buffering': 'no',
-        'Access-Control-Allow-Origin': '*',
-      }
-
-      logger.info('[runs.route] SSE subscription started', { runId: params.runId })
-
-      // 如果 Run 已结束，先推送所有历史事件再关闭
-      if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
-        const pastEvents = await container.store.listEvents(params.runId)
-        const encoder = new TextEncoder()
-        const stream = new ReadableStream({
-          start(controller) {
-            for (const event of pastEvents) {
-              controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
-            }
-            controller.close()
-          },
-        })
-        return new Response(stream, { headers })
-      }
-
-      return new Response(createSseStream(params.runId), { headers })
     },
     {
       params: t.Object({ runId: t.String() }),
@@ -160,35 +193,42 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     },
   )
 
-  // DELETE /runs/:runId — 取消 Run
   .delete(
     '/:runId',
-    async ({ params, set }) => {
-      const cancelled = await container.runManager.cancelRun(params.runId)
-      if (!cancelled) {
-        set.status = 404
-        return { code: 'NOT_FOUND', message: `Run not found or already finished: ${params.runId}` }
+    async ({ authUser, params, set }) => {
+      try {
+        await assertRunAccess(params.runId, authUser!.id)
+        const cancelled = await container.runManager.cancelRun(params.runId)
+        if (!cancelled) {
+          set.status = 404
+          return { code: 'NOT_FOUND', message: `Run not found or already finished: ${params.runId}` }
+        }
+        return { success: true, runId: params.runId }
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
       }
-      return { success: true, runId: params.runId }
     },
-    {
-      params: t.Object({ runId: t.String() }),
-    },
+    { params: t.Object({ runId: t.String() }) },
   )
 
-  // GET /runs/:runId/artifacts — 查询 Run 的所有产物
   .get(
     '/:runId/artifacts',
-    async ({ params, set }) => {
-      const run = await container.runManager.getRun(params.runId)
-      if (!run) {
-        set.status = 404
-        return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
+    async ({ authUser, params, set }) => {
+      try {
+        await assertRunAccess(params.runId, authUser!.id)
+        const artifacts = await container.artifactStore.listArtifactsByRun(params.runId)
+        return { runId: params.runId, artifacts, total: artifacts.length }
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
       }
-      const artifacts = await container.artifactStore.listArtifactsByRun(params.runId)
-      return { runId: params.runId, artifacts, total: artifacts.length }
     },
-    {
-      params: t.Object({ runId: t.String() }),
-    },
+    { params: t.Object({ runId: t.String() }) },
   )

@@ -1,26 +1,44 @@
 import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { post } from '../../lib/http.ts'
 import { RunMessageItem } from '../runs/RunMessageItem.tsx'
+import type { SessionTranscript } from '@agent-frame/shared'
 
-// ============================================================
-// ChatPage — 主聊天界面 + RunTimeline
-// ============================================================
+type SessionRun = { runId: string; userMessage: string }
 
 type CreateRunResponse = {
   runId: string
   traceId: string
   status: string
+  sessionId: string
 }
 
-export function ChatPage() {
+type Props = {
+  sessionId: string | null
+  transcript: SessionTranscript | null
+  onSessionActivity: () => void
+}
+
+export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
   const [input, setInput] = useState('')
-  const [sessionRuns, setSessionRuns] = useState<{ runId: string; userMessage: string }[]>([])
+  const [sessionRuns, setSessionRuns] = useState<SessionRun[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const feedRef = useRef<HTMLDivElement>(null)
 
-  // 自动滚动到底部
+  useEffect(() => {
+    if (!transcript) {
+      setSessionRuns([])
+      return
+    }
+    setSessionRuns(
+      transcript.runs.map((r) => ({
+        runId: r.run.id,
+        userMessage: r.userMessage,
+      })),
+    )
+  }, [transcript])
+
   useEffect(() => {
     const el = feedRef.current
     if (!el) return
@@ -37,7 +55,7 @@ export function ChatPage() {
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault()
     const message = input.trim()
-    if (!message || isSubmitting) return
+    if (!message || isSubmitting || !sessionId) return
 
     setError(null)
     setIsSubmitting(true)
@@ -46,10 +64,12 @@ export function ChatPage() {
       const result = await post<CreateRunResponse>('/runs', {
         input: { message },
         agentId: 'supervisor-agent',
+        sessionId,
       })
       setSessionRuns((prev) => [...prev, { runId: result.runId, userMessage: message }])
       setInput('')
       textareaRef.current?.focus()
+      onSessionActivity()
     } catch (err) {
       setError(err instanceof Error ? err.message : '请求失败')
     } finally {
@@ -63,72 +83,17 @@ export function ChatPage() {
     }
   }
 
+  if (!sessionId) {
+    return (
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280' }}>
+        请选择或新建一个会话
+      </div>
+    )
+  }
+
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100vh',
-        background: '#0f1117',
-        color: '#e5e7eb',
-        fontFamily: "'Inter', -apple-system, sans-serif",
-      }}
-    >
-      {/* 顶部栏 */}
-      <header
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          padding: '14px 24px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-          background: 'rgba(255,255,255,0.02)',
-          flexShrink: 0,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <div
-            style={{
-              width: '28px',
-              height: '28px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              fontSize: '14px',
-            }}
-          >
-            ⚡
-          </div>
-          <div>
-            <div
-              style={{
-                fontSize: '15px',
-                fontWeight: 700,
-                background: 'linear-gradient(90deg, #a78bfa, #60a5fa)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Agent Frame
-            </div>
-            <div style={{ fontSize: '10px', color: '#6b7280', marginTop: '-1px' }}>
-              MVP · Multi-Agent Framework
-            </div>
-          </div>
-        </div>
-
-        {/* 状态指示器 */}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
-        </div>
-      </header>
-
-      {/* 主内容区 */}
-      <div 
-        ref={feedRef}
-        style={{ flex: 1, overflowY: 'auto', background: '#0f1117' }}
-      >
+    <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: 0, height: '100%' }}>
+      <div ref={feedRef} style={{ flex: 1, overflowY: 'auto', background: '#0f1117' }}>
         {sessionRuns.length === 0 ? (
           <div
             style={{
@@ -143,9 +108,6 @@ export function ChatPage() {
           >
             <div style={{ fontSize: '40px', opacity: 0.4 }}>⚡</div>
             <div style={{ fontSize: '14px' }}>发送消息开始对话</div>
-            <div style={{ fontSize: '12px', color: '#374151' }}>
-              SupervisorAgent 将自动调用 ResearchAgent 和 SummaryAgent
-            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -156,7 +118,6 @@ export function ChatPage() {
         )}
       </div>
 
-      {/* 底部输入区 */}
       <div
         style={{
           padding: '16px 20px',
@@ -181,21 +142,15 @@ export function ChatPage() {
           </div>
         )}
 
-        <form
-          onSubmit={handleSubmit}
-          style={{
-            display: 'flex',
-            gap: '10px',
-            alignItems: 'flex-end',
-          }}
-        >
+        <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入问题发送给 SupervisorAgent...  (Ctrl+Enter 提交)"
+            placeholder="输入问题... (Ctrl+Enter 提交)"
             rows={2}
+            disabled={isSubmitting}
             style={{
               flex: 1,
               background: 'rgba(255,255,255,0.05)',
@@ -207,16 +162,7 @@ export function ChatPage() {
               resize: 'none',
               outline: 'none',
               fontFamily: 'inherit',
-              transition: 'border-color 0.2s',
-              lineHeight: 1.5,
             }}
-            onFocus={(e) => {
-              e.target.style.borderColor = 'rgba(99,102,241,0.5)'
-            }}
-            onBlur={(e) => {
-              e.target.style.borderColor = 'rgba(255,255,255,0.1)'
-            }}
-            disabled={isSubmitting}
           />
           <button
             type="submit"
@@ -224,33 +170,17 @@ export function ChatPage() {
             style={{
               padding: '12px 20px',
               borderRadius: '10px',
-              background:
-                isSubmitting || !input.trim()
-                  ? 'rgba(99,102,241,0.3)'
-                  : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-              color: isSubmitting || !input.trim() ? '#6b7280' : '#fff',
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              color: '#fff',
               border: 'none',
-              cursor: isSubmitting || !input.trim() ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
               fontWeight: 600,
-              transition: 'all 0.2s',
-              whiteSpace: 'nowrap',
               height: '52px',
             }}
           >
-            {isSubmitting ? '⏳' : '发送 ⚡'}
+            {isSubmitting ? '⏳' : '发送'}
           </button>
         </form>
-        <div
-          style={{
-            marginTop: '6px',
-            fontSize: '11px',
-            color: '#374151',
-            textAlign: 'right',
-          }}
-        >
-          Ctrl+Enter 快速提交 · MVP v0.1
-        </div>
       </div>
     </div>
   )

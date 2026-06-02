@@ -50,6 +50,10 @@ export const env = {
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
   LOG_EVENT_DELTA: optionalBooleanEnv('LOG_EVENT_DELTA', false),
 
+  // JWT
+  JWT_SECRET: optionalEnv('JWT_SECRET', 'dev-jwt-secret-change-in-production'),
+  JWT_EXPIRES_IN: optionalEnv('JWT_EXPIRES_IN', '7d'),
+
   // 开发模式
   isDev: optionalEnv('NODE_ENV', 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',

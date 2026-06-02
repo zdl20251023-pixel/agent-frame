@@ -13,6 +13,14 @@ export function generateTraceId(): string {
   return `trace-${ulid().toLowerCase()}`
 }
 
+export function generateUserId(): string {
+  return `user-${ulid().toLowerCase()}`
+}
+
+export function generateSessionId(): string {
+  return `sess-${ulid().toLowerCase()}`
+}
+
 export function generateRunId(): string {
   return `run-${ulid().toLowerCase()}`
 }

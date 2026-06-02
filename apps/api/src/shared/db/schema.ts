@@ -16,6 +16,40 @@ import {
 // 所有表使用 InnoDB + utf8mb4
 // ============================================================
 
+// ─── users 表 ────────────────────────────────────────────────
+export const users = mysqlTable(
+  'users',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    email: varchar('email', { length: 255 }).notNull(),
+    username: varchar('username', { length: 80 }),
+    passwordHash: varchar('password_hash', { length: 255 }).notNull(),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    uniqueIndex('uq_users_email').on(table.email),
+    uniqueIndex('uq_users_username').on(table.username),
+  ],
+)
+
+// ─── chat_sessions 表 ─────────────────────────────────────────
+export const chatSessions = mysqlTable(
+  'chat_sessions',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    userId: varchar('user_id', { length: 36 }).notNull(),
+    title: varchar('title', { length: 255 }),
+    deletedAt: datetime('deleted_at', { mode: 'string', fsp: 3 }),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_chat_sessions_user_id').on(table.userId),
+    index('idx_chat_sessions_updated_at').on(table.updatedAt),
+  ],
+)
+
 // ─── runs 表 ─────────────────────────────────────────────────
 export const runs = mysqlTable(
   'runs',
@@ -37,6 +71,7 @@ export const runs = mysqlTable(
     index('idx_status').on(table.status),
     index('idx_user_id').on(table.userId),
     index('idx_trace_id').on(table.traceId),
+    index('idx_session_id').on(table.sessionId),
   ],
 )
 
@@ -150,6 +185,8 @@ export const modelCallLogs = mysqlTable(
 )
 
 export type Schema = {
+  users: typeof users
+  chatSessions: typeof chatSessions
   runs: typeof runs
   steps: typeof steps
   runEvents: typeof runEvents

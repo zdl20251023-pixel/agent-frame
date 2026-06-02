@@ -52,7 +52,22 @@ export class MemoryRunStore implements RunStore {
   }
 
   async listRuns(limit = 20): Promise<Run[]> {
-    return [...this.runs.values()].slice(-limit)
+    return [...this.runs.values()]
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+      .slice(-limit)
+  }
+
+  async listRunsByUser(userId: string, limit = 20): Promise<Run[]> {
+    return [...this.runs.values()]
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .slice(0, limit)
+  }
+
+  async listRunsBySession(sessionId: string, userId: string): Promise<Run[]> {
+    return [...this.runs.values()]
+      .filter((r) => r.sessionId === sessionId && r.userId === userId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }
 
   async createStep(input: CreateStepInput): Promise<Step> {

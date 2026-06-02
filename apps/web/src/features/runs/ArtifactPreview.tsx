@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useReducer } from 'react'
 import type { Artifact } from '@agent-frame/shared'
+import { get } from '../../lib/http.ts'
 
 // ============================================================
 // ArtifactPreview — 展示 Agent 产出的 Artifact 内容
@@ -26,25 +27,68 @@ type ArtifactListProps = {
   className?: string
 }
 
+type ArtifactPreviewState = {
+  content: ArtifactContent | null
+  loading: boolean
+  error: string | null
+}
+
+type ArtifactPreviewAction =
+  | { type: 'reset' }
+  | { type: 'loaded'; content: ArtifactContent }
+  | { type: 'failed'; error: string }
+
+const initialArtifactPreviewState: ArtifactPreviewState = {
+  content: null,
+  loading: true,
+  error: null,
+}
+
+/**
+ * 管理单个 Artifact 内容加载状态。
+ *
+ * @param state - 当前预览状态，包含内容、加载标记和错误信息。
+ * @param action - 加载重置、成功或失败动作。
+ * @returns 下一次渲染使用的预览状态。
+ */
+function artifactPreviewReducer(
+  state: ArtifactPreviewState,
+  action: ArtifactPreviewAction,
+): ArtifactPreviewState {
+  switch (action.type) {
+    case 'reset':
+      return initialArtifactPreviewState
+    case 'loaded':
+      return { content: action.content, loading: false, error: null }
+    case 'failed':
+      return { ...state, loading: false, error: action.error }
+  }
+}
+
 // ─── 单个 Artifact 预览 ────────────────────────────────────
 
 export function ArtifactPreview({ artifactId, className }: ArtifactPreviewProps) {
-  const [content, setContent] = useState<ArtifactContent | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [{ content, loading, error }, dispatch] = useReducer(
+    artifactPreviewReducer,
+    initialArtifactPreviewState,
+  )
   const [expanded, setExpanded] = useState(true)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
-    fetch(`/api/artifacts/${artifactId}/content`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
+    let cancelled = false
+    dispatch({ type: 'reset' })
+
+    get<ArtifactContent>(`/artifacts/${artifactId}/content`)
+      .then((data) => {
+        if (!cancelled) dispatch({ type: 'loaded', content: data })
       })
-      .then(setContent)
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false))
+      .catch((err: Error) => {
+        if (!cancelled) dispatch({ type: 'failed', error: err.message })
+      })
+
+    return () => {
+      cancelled = true
+    }
   }, [artifactId])
 
   if (loading) return <div className="artifact-loading">⏳ 加载产物中...</div>
@@ -129,8 +173,7 @@ export function RunArtifactList({ runId, className }: ArtifactListProps) {
 
   useEffect(() => {
     if (!runId) return
-    fetch(`/api/runs/${runId}/artifacts`)
-      .then((r) => r.ok ? r.json() : { artifacts: [] })
+    get<{ artifacts: Artifact[] }>(`/runs/${runId}/artifacts`)
       .then((data) => setArtifacts(data.artifacts ?? []))
       .catch(() => setArtifacts([]))
       .finally(() => setLoading(false))

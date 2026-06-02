@@ -3,6 +3,8 @@ import { cors } from '@elysiajs/cors'
 import { runsRoute } from './features/runs/runs.route.js'
 import { agentsRoute } from './features/agents/agents.route.js'
 import { artifactsRoute } from './features/artifacts/artifacts.route.js'
+import { authRoute } from './features/auth/auth.route.js'
+import { sessionsRoute } from './features/sessions/sessions.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
@@ -75,6 +77,9 @@ export function createApp() {
         set.status = error.statusCode
         return error.toJSON()
       }
+      if (env.NODE_ENV === 'development') {
+        console.error('[HTTP] Unhandled error detail:', error)
+      }
       logger.error('[HTTP] Unhandled error', { errorCode: 'INTERNAL_ERROR' })
       set.status = 500
       return { code: 'INTERNAL_ERROR', message: 'Internal server error' }
@@ -86,6 +91,8 @@ export function createApp() {
       version: '0.1.0',
     }))
     // 功能路由
+    .use(authRoute)
+    .use(sessionsRoute)
     .use(runsRoute)
     .use(agentsRoute)
     .use(artifactsRoute)

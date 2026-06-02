@@ -15,6 +15,30 @@ if (!DATABASE_URL) {
 }
 
 const DDL_STATEMENTS = [
+  // ─── users 表 ──────────────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS users (
+    id            VARCHAR(36)  NOT NULL PRIMARY KEY,
+    email         VARCHAR(255) NOT NULL,
+    username      VARCHAR(80)  NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at    DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    UNIQUE KEY uq_users_email (email),
+    UNIQUE KEY uq_users_username (username)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  // ─── chat_sessions 表 ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS chat_sessions (
+    id          VARCHAR(36)  NOT NULL PRIMARY KEY,
+    user_id     VARCHAR(36)  NOT NULL,
+    title       VARCHAR(255) NULL,
+    deleted_at  DATETIME(3)  NULL,
+    created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_chat_sessions_user_id (user_id),
+    INDEX idx_chat_sessions_updated_at (updated_at)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
   // ─── runs 表 ───────────────────────────────────────────────
   `CREATE TABLE IF NOT EXISTS runs (
     id            VARCHAR(36)  NOT NULL PRIMARY KEY,

@@ -15,6 +15,8 @@ export interface RunStore {
     options?: { output?: unknown; error?: unknown }
   ): Promise<void>
   listRuns(limit?: number): Promise<Run[]>
+  listRunsByUser(userId: string, limit?: number): Promise<Run[]>
+  listRunsBySession(sessionId: string, userId: string): Promise<Run[]>
 
   // Step 操作
   createStep(input: CreateStepInput): Promise<Step>

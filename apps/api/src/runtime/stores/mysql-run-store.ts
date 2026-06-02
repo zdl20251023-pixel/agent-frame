@@ -1,4 +1,4 @@
-import { eq, desc } from 'drizzle-orm'
+import { and, asc, eq, desc } from 'drizzle-orm'
 import type {
   Run,
   RunStatus,
@@ -11,32 +11,13 @@ import type {
 import type { RunStore } from './run-store.js'
 import { getDb } from '../../shared/db/client.js'
 import { runs, steps, runEvents } from '../../shared/db/schema.js'
-import { now } from '../../shared/utils/id.js'
+import { mysqlNow, toMySQL } from '../../shared/db/datetime.js'
 import { logger } from '../../shared/observability/logger.js'
 import { AppError } from '../../shared/errors/app-error.js'
 
 // ============================================================
 // MySQLRunStore — 基于 Drizzle ORM 的 MySQL 持久化实现
 // ============================================================
-
-/**
- * MySQL DATETIME(3) 不接受 ISO 8601（带Z尾缀）格式
- * 需要转换为 'YYYY-MM-DD HH:MM:SS.mmm'
- */
-function toMySQL(isoOrDate: string | Date): string {
-  const d = typeof isoOrDate === 'string' ? new Date(isoOrDate) : isoOrDate
-  // 格式化为 MySQL DATETIME(3) 格式
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(), 3)}`
-  )
-}
-
-/** now() 返回当前时间 MySQL 格式 */
-function mysqlNow(): string {
-  return toMySQL(new Date())
-}
 
 export class MySQLRunStore implements RunStore {
   private get db() {
@@ -103,6 +84,27 @@ export class MySQLRunStore implements RunStore {
       .from(runs)
       .orderBy(desc(runs.createdAt))
       .limit(limit)
+
+    return rows.map(this.mapRun)
+  }
+
+  async listRunsByUser(userId: string, limit = 20): Promise<Run[]> {
+    const rows = await this.db
+      .select()
+      .from(runs)
+      .where(eq(runs.userId, userId))
+      .orderBy(desc(runs.createdAt))
+      .limit(limit)
+
+    return rows.map(this.mapRun)
+  }
+
+  async listRunsBySession(sessionId: string, userId: string): Promise<Run[]> {
+    const rows = await this.db
+      .select()
+      .from(runs)
+      .where(and(eq(runs.sessionId, sessionId), eq(runs.userId, userId)))
+      .orderBy(asc(runs.createdAt))
 
     return rows.map(this.mapRun)
   }
