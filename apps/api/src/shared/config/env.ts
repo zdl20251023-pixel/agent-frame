@@ -15,6 +15,12 @@ function optionalEnv(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue
 }
 
+function optionalBooleanEnv(key: string, defaultValue: boolean): boolean {
+  const value = process.env[key]
+  if (value === undefined) return defaultValue
+  return value.toLowerCase() === 'true'
+}
+
 export const env = {
   NODE_ENV: optionalEnv('NODE_ENV', 'development'),
   PORT: parseInt(optionalEnv('PORT', '3000'), 10),
@@ -42,6 +48,7 @@ export const env = {
 
   // 日志
   LOG_LEVEL: optionalEnv('LOG_LEVEL', 'info'),
+  LOG_EVENT_DELTA: optionalBooleanEnv('LOG_EVENT_DELTA', false),
 
   // 开发模式
   isDev: optionalEnv('NODE_ENV', 'development') === 'development',

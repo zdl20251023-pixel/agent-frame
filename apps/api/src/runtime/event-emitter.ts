@@ -2,6 +2,7 @@ import type { AgentEvent } from '@agent-frame/shared'
 import { eventBus } from '../shared/realtime/event-bus.js'
 import type { RunStore } from './stores/run-store.js'
 import { logger } from '../shared/observability/logger.js'
+import { env } from '../shared/config/env.js'
 
 // ============================================================
 // EventEmitter — 框架事件发布中心
@@ -24,6 +25,8 @@ export class RunEventEmitter {
 
     // 2. 再广播给 SSE 订阅者
     eventBus.emit(event)
+
+    if (event.type === 'message.delta' && !env.LOG_EVENT_DELTA) return
 
     log.debug('[EventEmitter] Event emitted')
   }

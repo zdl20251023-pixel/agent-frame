@@ -38,10 +38,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
   .post(
     '/',
     async ({ body, set }) => {
-      try {
-        const message = typeof body.input === 'object' && body.input !== null ? (body.input as any).message : JSON.stringify(body.input)
-        logger.info(`[UserMessage] 收到前端发送的消息: ${message}`)
-        
+      try {              
         const run = await container.runManager.createRun({
           input: body.input,
           agentId: body.agentId,
