@@ -259,6 +259,29 @@ export const agentTasks = mysqlTable(
   ],
 )
 
+// ─── workflow_runs 表 ────────────────────────────────────────
+// 存储 WorkflowRun 当前状态和各 Stage 结果；MVP 用 JSON 保持 schema 简洁。
+export const workflowRuns = mysqlTable(
+  'workflow_runs',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    runId: varchar('run_id', { length: 36 }).notNull(),
+    workflowId: varchar('workflow_id', { length: 100 }).notNull(),
+    status: varchar('status', { length: 30 }).notNull(),
+    currentStageId: varchar('current_stage_id', { length: 100 }),
+    waitingHumanStageId: varchar('waiting_human_stage_id', { length: 100 }),
+    stageResults: json('stage_results').notNull(),
+    error: json('error'),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_workflow_runs_run_id').on(table.runId),
+    index('idx_workflow_runs_workflow_id').on(table.workflowId),
+    index('idx_workflow_runs_status').on(table.status),
+  ],
+)
+
 export type Schema = {
   users: typeof users
   chatSessions: typeof chatSessions
@@ -271,4 +294,5 @@ export type Schema = {
   modelCallLogs: typeof modelCallLogs
   memories: typeof memories
   agentTasks: typeof agentTasks
+  workflowRuns: typeof workflowRuns
 }

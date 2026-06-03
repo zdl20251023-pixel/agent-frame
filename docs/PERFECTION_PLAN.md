@@ -3,7 +3,7 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 6 生产化与规模化（已完成）**
+> 当前阶段：**核心 MVP 已完成，进入体验完善与持久化补齐**
 
 ---
 
@@ -11,7 +11,7 @@
 
 > 快速查看所有待办项的完成状态。详细实现说明见后续各章节。
 >
-> **图例**：✅ 已完成 │ 🚧 进行中 │ ❌ 未开始
+> **图例**：✅ 已完成 │ 🚧 部分完成 / MVP 版 │ ❌ 未开始
 
 ### 阶段 1 — A2A MVP 扫尾（P0 / P1）
 
@@ -34,7 +34,7 @@
 | 2.4 | `workflow/workflow-definition.ts` 类型定义 | P2 | ✅ | 2026-06-03 |
 | 2.5 | `workflow/workflow-runner.ts` 轻量 Runner | P2 | ✅ | 2026-06-03 |
 | 2.6 | `workflow/stage-executor.ts` 单阶段执行 | P2 | ✅ | 2026-06-03 |
-| 2.7 | `workflow/workflow-store.ts` 状态存储（内存 MVP） | P2 | ✅ | 2026-06-03 |
+| 2.7 | `workflow/workflow-store.ts` 状态存储（内存 MVP） | P2 | 🚧 | 2026-06-03 |
 | 2.8 | `workflow/retry-policy.ts` 阶段重试策略 | P2 | ✅ | 2026-06-03 |
 | 2.9 | `workflow/human-gate.ts` 人工节点接口预留 | P2 | ✅ | 2026-06-03 |
 | 2.10 | `packages/shared` Workflow 事件类型常量 | P2 | ✅ | 2026-06-03 |
@@ -51,18 +51,22 @@
 | 3.4 | `memory/memory-store.mysql.ts` MySQL 持久化 | P2 | ✅ | 2026-06-03 |
 | 3.5 | `memory/memory-retriever.ts` 记忆召回 | P2 | ✅ | 2026-06-03 |
 | 3.6 | `memory/memory-policy.ts` 记忆写入策略 | P3 | ✅ | 2026-06-03 |
-| 3.7 | `features/sessions/` 完整消息归档 + Run 归属查询 | P2 | ✅ | 2026-06-03 |
+| 3.7 | `features/sessions/` 会话列表、Run 归属查询与 transcript 恢复 | P2 | ✅ | 2026-06-03 |
+| 3.8 | 前端 `features/projects/` 项目列表与详情页 | P3 | ❌ | — |
 
 ### 阶段 4 — 可观测性、安全与生产化（P2 / P3）
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
 | 4.1 | `shared/observability/tracing.ts` traceId 贯穿链路追踪 | P2 | ✅ | 2026-06-03 |
-| 4.2 | `features/usage/` Token / 成本统计 API | P2 | ✅ | 2026-06-03 |
+| 4.2 | `features/usage/` Token / 成本统计 API | P2 | 🚧 | 2026-06-03 |
 | 4.3 | `features/auth/` 完整 JWT 认证 | P2 | ✅ | 2026-06-03 |
 | 4.4 | `shared/middlewares/rate-limit.middleware.ts` 请求限流 | P3 | ✅ | 2026-06-03 |
-| 4.5 | `shared/realtime/ws.hub.ts` WebSocket 多 Run 订阅 | P2 | ✅ | 2026-06-03 |
+| 4.5 | `shared/realtime/ws.hub.ts` WebSocket 多 Run 订阅 | P2 | 🚧 | 2026-06-03 |
 | 4.6 | `shared/observability/metrics.ts` 指标采集 | P3 | ✅ | 2026-06-03 |
+| 4.7 | 前端 Usage 统计面板 | P3 | ❌ | — |
+| 4.8 | OpenTelemetry 接入 | P3 | ❌ | — |
+| 4.9 | 多租户 `tenantId` 权限扩展 | P3 | ❌ | — |
 
 ### 阶段 5 — Plugin 扩展（P3）
 
@@ -71,16 +75,17 @@
 | 5.1 | `plugins/plugin-context.ts` 完整 PluginContext 实现 | P3 | ✅ | 2026-06-03 |
 | 5.2 | `plugins/builtin-plugins.ts` 内置 Agent 插件注册 | P3 | ✅ | 2026-06-03 |
 | 5.3 | 前端 `features/agents/` Agent 列表与能力展示页 | P1 | ✅ | 2026-06-03 |
-| 5.4 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | ✅ | 2026-06-03 |
+| 5.4 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | 🚧 | 2026-06-03 |
+| 5.5 | 第一个业务模板插件（creative-writing） | P3 | ❌ | — |
 
 ### 阶段 6 — 生产化与规模化（P3）
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
 | 6.1 | Redis EventBus（替换内存 EventBus，支持多实例）| P3 | ✅ | 2026-06-03 |
-| 6.2 | A2A 异步模式 `startAsync()` + Worker | P3 | ✅ | 2026-06-03 |
+| 6.2 | A2A 异步模式 `startAsync()` + Worker | P3 | 🚧 | 2026-06-03 |
 | 6.3 | `runtime/scheduler.ts` 并发控制 + 优先级队列 | P3 | ✅ | 2026-06-03 |
-| 6.4 | E2E 测试 + GitHub Actions CI/CD | P3 | ✅ | 2026-06-03 |
+| 6.4 | E2E 测试 + GitHub Actions CI/CD | P3 | 🚧 | 2026-06-03 |
 | 6.5 | Docker 部署支持 | P3 | ✅ | 2026-06-03 |
 
 ---
@@ -127,11 +132,24 @@
 | `shared/errors/app-error.ts` | ✅ 完成 | 统一错误类 |
 | `shared/observability/logger.ts` | ✅ 完成 | 结构化日志基础 |
 | `packages/shared/constants/` | ✅ 完成 | 事件类型、Run/Step 状态、A2A 状态、Artifact 类型等常量 |
-| Web `RunTimeline` | ✅ 完成 | 前端实时事件展示 |
+| Web `RunTimeline` | 🚧 部分完成 | 已支持基础实时事件展示，待补 `workflow.*` 事件卡片 |
 
 ### 1.2 缺失或待完善模块 ❌
 
-无。所有先前规划的后端、前端、数据库 Schema 及共享包模块均已全部按框架设计实现并测试通过。
+当前后端核心链路已经可用，但仍有若干体验层、持久化层和生产化增强未完成。以下状态以当前代码库为准：
+
+| 模块/功能 | 当前状态 | 说明 |
+|---|---|---|
+| 前端 `features/projects/` | ❌ 缺失 | 后端 Project CRUD 已有，前端暂无 `/projects` 页面 |
+| 前端 Usage 统计面板 | ❌ 缺失 | 后端 usage API 已有，暂无 token / 成本可视化页面 |
+| `usage.service.ts` 分层 | ❌ 缺失 | 当前聚合逻辑仍在 `usage.route.ts` 内 |
+| Workflow MySQL 持久化 | ❌ 缺失 | 当前只有 `MemoryWorkflowStore`，服务重启会丢 WorkflowRun |
+| RunTimeline 的 `workflow.*` 事件卡片 | ❌ 缺失 | 前端事件卡片尚未展示 Workflow 阶段事件 |
+| 前端 WebSocket 聊天/订阅 | ❌ 缺失 | 后端 WS hub 已有，聊天事件仍主要使用 SSE |
+| `creative-writing` 业务插件模板 | ❌ 缺失 | 仅有 builtin 插件，尚无业务模板插件 |
+| Memory 与 Agent 执行链路联动 | 🚧 部分完成 | Memory store / retriever / policy 已有，但 Agent 执行前召回、执行后候选写入尚未接入主链路 |
+| A2A 异步前端子任务订阅 | 🚧 部分完成 | 后端 `startAsync()` + Worker 已有，前端未使用 `childRunId` 展示子任务进度 |
+| OpenTelemetry / 多租户 / Temporal | ❌ 缺失 | 均为后置生产化增强 |
 
 ---
 
@@ -238,13 +256,13 @@
 - [x] 新建 `memory/memory-retriever.ts`：按 `scope` + `scopeId` + `kind` 召回记忆
 - [x] 新建 `memory/memory-policy.ts`：控制哪些记忆可写入（来源过滤、长度限制、人审标记）
 - [x] `packages/shared/src/memory/`：`MemoryItem`、`MemoryScope` 共享类型
-- [x] Agent 执行后可选写入候选记忆（不自动写入，走 MemoryPolicy）
+- [ ] Agent 执行前召回相关记忆，执行后生成候选记忆（必须经过 MemoryPolicy）
 - [x] `features/memory/`（后置）：记忆查询、召回历史 API
 
 #### 3.3 Session 完善
 
 - [x] `features/sessions/`：完整实现消息归档、Run 归属查询
-- [x] `shared/db/schema.ts`：完善 `sessions`、`messages` 表结构
+- [x] `shared/db/schema.ts`：完善 `chat_sessions` 表结构，通过 Run / Event transcript 恢复历史对话
 - [x] 前端 `features/sessions/`：历史对话列表（可后置）
 
 ---
@@ -262,15 +280,16 @@
 #### 4.2 Token / 成本统计 Usage
 
 - [x] 新建 `features/usage/usage.route.ts`：`GET /usage?runId=&agentId=&dateRange=`
-- [x] 新建 `features/usage/usage.service.ts`：聚合 `model_calls` 表数据
+- [ ] 新建 `features/usage/usage.service.ts`：聚合 `model_calls` 表数据，保持 route / service 分层
 - [x] `shared/db/schema.ts`：`model_calls` 表完善 `cost_usd`、`finish_reason` 字段
 - [ ] 前端统计面板（可后置）
 
 #### 4.3 认证与权限
 
 - [x] `features/auth/`：完整 JWT 认证（或 API Key 模式）
-- [x] `shared/middlewares/auth.middleware.ts`：注入 `userId`、`roles`
-- [x] `a2a-policy.ts`：策略支持 `userId` 维度控制
+- [x] `shared/auth/auth.middleware.ts`：注入 `authUser` / `userId`
+- [ ] `shared/auth/auth.middleware.ts`：补充 `roles` 注入与角色鉴权
+- [x] `a2a-policy.ts`：策略支持调用白名单、深度、次数、超时和成本预算
 - [ ] 后续接多租户（`tenantId`）时，通过 Policy 扩展
 
 #### 4.4 限流与安全
@@ -281,7 +300,7 @@
 #### 4.5 WebSocket 多 Run 订阅
 
 - [x] 新建 `shared/realtime/ws.hub.ts`：WebSocket 连接管理、多 Run 房间订阅
-- [x] `event-bus.ts` 支持广播到 WebSocket（当前仅 SSE）
+- [x] `event-bus.ts` 支持广播到 WebSocket
 - [ ] 前端 SSE 升级为 WebSocket（可渐进式）
 
 ---
@@ -308,7 +327,7 @@
 #### 5.3 Workflow 可视化前端
 
 - [x] 前端 `features/workflows/`：Workflow 列表、当前 Stage 进度展示（MVP 简单文字展示即可）
-- [x] 前端 `WorkflowTimeline` 组件：展示 `workflow.stage.*` 事件
+- [ ] 前端 `WorkflowTimeline` 独立组件：展示 `workflow.stage.*` 事件
 
 ---
 
@@ -326,7 +345,7 @@
 - [x] `a2a/a2a-client.ts`：`startAsync()` 方法实现（当前只有 `callSync`）
 - [x] 新建异步 Worker（可独立进程或 BullMQ）
 - [x] `packages/shared/src/constants/`：新增 `A2A_ASYNC_STATUSES`（queued / running / completed / failed）
-- [x] 前端通过 `childRunId` 订阅子任务进度
+- [ ] 前端通过 `childRunId` 订阅子任务进度
 
 #### 6.3 长任务与 Scheduler
 
@@ -336,7 +355,7 @@
 #### 6.4 E2E 测试与 CI/CD
 
 - [x] `tests/e2e/`：补充端到端测试（chat 流程、A2A 调用、Artifact 生成）
-- [x] GitHub Actions CI：自动运行 `bun test`、类型检查、lint
+- [ ] GitHub Actions CI：自动运行当前有效的 `bun run tsc-check`、`bun run lint`、`bun test`
 - [x] Docker 部署支持
 
 ---
@@ -361,7 +380,11 @@
 | 🟡 P2 | Usage 统计 API | 阶段 4 |
 | 🟡 P2 | JWT 认证 | 阶段 4 |
 | 🟡 P2 | WebSocket 多 Run 订阅 | 阶段 4 |
+| 🟡 P2 | RunTimeline 支持 `workflow.*` 事件 | 阶段 5 |
+| 🟡 P2 | WorkflowRun MySQL 持久化 | 阶段 2 / 阶段 6 |
 | 🟢 P3 | Plugin 机制完善 + 业务模板 | 阶段 5 |
+| 🟢 P3 | Project 前端页面 | 阶段 3 |
+| 🟢 P3 | Usage 统计面板 | 阶段 4 |
 | 🟢 P3 | Redis EventBus | 阶段 6 |
 | 🟢 P3 | A2A 异步模式 | 阶段 6 |
 | 🟢 P3 | 限流/预算实际生效 | 阶段 4 |
@@ -374,13 +397,13 @@
 
 | 功能 | 当前状态 | 目标状态 | 优先级 |
 |---|---|---|---|
-| `RunTimeline` 事件展示 | ✅ 完成 | 增加 `workflow.*`、`artifact.*` 事件卡片 | P2 |
+| `RunTimeline` 事件展示 | 🚧 部分完成 | 增加 `workflow.*`、`artifact.*` 事件卡片 | P2 |
 | Agent 列表页 | ✅ 完成 | 展示注册 Agent 列表、能力描述 | P1 |
-| Artifact 预览页 | ✅ 完成 | 产物内容、版本历史、关联 Run | P2 |
+| Artifact 预览页 | 🚧 部分完成 | 增加独立路由与更完整的版本/关联 Run 展示 | P2 |
 | Project 列表页 | ❌ 缺失 | 项目创建、Run 归属查询 | P3 |
 | Usage 统计面板 | ❌ 缺失 | Token / 成本图表 | P3 |
 | Session 历史 | ✅ 完成 | 历史对话归档与侧边栏选择 | P3 |
-| Workflow 进度页 | ✅ 完成 | 展示 WorkflowRuns、当前 Stage 进度与执行历史 | P2 |
+| Workflow 进度页 | 🚧 部分完成 | 展示 WorkflowRuns、当前 Stage 进度与执行历史；补独立 WorkflowTimeline | P2 |
 
 ---
 
@@ -395,9 +418,9 @@
 | `artifacts` | ✅ 完成 | 已补充 `project_id` 字段并建立索引 |
 | `artifact_versions` | ✅ 完成 | 确保 `created_by_step_id` 正常关联并正确写入 |
 | `projects` | ✅ 完成 | 已新建 `projects` 表并建立 owner 索引 |
-| `sessions` | ✅ 完成 | `chat_sessions`、`messages` 表结构已完善且运作正常 |
+| `sessions` | 🚧 部分完成 | `chat_sessions` 已完成；暂无独立 `messages` 表，历史通过 Run / Event transcript 恢复 |
 | `memories` | ✅ 完成 | 已新建 `memories` 表（包含 scope, scopeId, kind, content, metadata）并添加索引 |
-| `workflow_runs` | ✅ 完成 | 已支持在 `MemoryWorkflowStore` 中高效存储 Workflow 状态 |
+| `workflow_runs` | ❌ 缺失 | 当前仅 `MemoryWorkflowStore`；需要 MySQL 持久化以支持重启恢复 |
 | `usage` | ✅ 完成 | 已通过 `model_calls` 表关联实现用量与成本的精准聚合统计 |
 
 ---
@@ -419,7 +442,26 @@
 
 ---
 
-## 七、设计约束与开发原则（执行期间须遵守）
+## 七、下一迭代最小任务清单
+
+> 目标：优先补齐“用户能感知的体验缺口”和“会影响重启 / 维护的架构缺口”。每项控制在可独立验收的范围内，避免一次迭代同时改动 UI、数据库和 Agent 执行链路。
+>
+> 执行建议：先做 1–4，形成前端体验闭环；再做 5–8，补齐持久化、分层和异步链路。
+
+| 顺序 | 任务 | 优先级 | 范围 | 依赖 | 验收标准 |
+|---|---|---|---|---|---|
+| 1 | `RunTimeline` 支持 `workflow.*` 事件 | P2 | 前端事件卡片 | 已有 Workflow 事件常量 | Workflow 执行时，Run 时间线能展示 stage started / completed / failed / human gate waiting / approved / rejected；未知事件有兜底展示 |
+| 2 | 前端 Project 页面 | P3 | `/projects` 列表 + 创建 + 详情入口 | 后端 Project API 已有 | 登录用户可查看项目列表、创建项目、进入项目详情；详情页展示项目关联 Run / Artifact 的空态或列表 |
+| 3 | 前端 Usage 统计面板 | P3 | `/usage` 面板 | 后端 Usage API 已有 | 支持 today / week / month 切换；展示调用次数、token、估算成本；空数据、加载中、401、接口失败都有明确 UI |
+| 4 | Artifact 独立详情路由 | P2 | `/artifacts/:artifactId` | `features/artifacts/` 组件已存在 | 用户可从 Run 产物跳转到独立详情页；展示当前内容、版本历史、基础元数据和返回入口 |
+| 5 | WorkflowRun MySQL 持久化 | P2 | 后端 Store + schema + migration | 当前 `MemoryWorkflowStore` | 新增持久化 WorkflowRun / StageRun 存储；服务重启后 `GET /workflows/runs` 仍能返回历史记录；现有内存实现可作为测试替身保留 |
+| 6 | Usage Service 分层 | P3 | 后端 route/service/repository | 现有 `usage.route.ts` | `usage.route.ts` 只处理 HTTP、鉴权、参数和错误转换；聚合 SQL 迁入 service/repository；接口响应保持兼容 |
+| 7 | 异步 A2A 前端子任务订阅 | P3 | 前端状态展示 + 事件订阅 | 后端 `startAsync()` + Worker 已有 | UI 能根据 `taskId` / `childRunId` 展示 queued / running / completed / failed；失败时显示错误原因；刷新后可恢复可查询状态 |
+| 8 | Memory 接入 Agent 执行链路 | P3 | Agent 执行前召回 + 执行后候选写入 | Memory store / retriever / policy 已有 | 至少 Supervisor 或 Research 在执行前读取相关 memory；执行后只生成候选记忆，不自动写入未审内容；所有写入必须经过 `MemoryPolicy` |
+
+---
+
+## 八、设计约束与开发原则（执行期间须遵守）
 
 1. **禁止魔法字符串**：所有事件类型、状态值必须使用 `packages/shared/src/constants/` 中定义的常量，不得内联字符串。
 2. **ModelClient 隔离**：Vercel AI SDK 只出现在 `apps/api/src/ai/` 内，不扩散到 runtime / a2a / workflow。

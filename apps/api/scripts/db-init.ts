@@ -143,6 +143,23 @@ const DDL_STATEMENTS = [
     INDEX idx_run_id (run_id),
     INDEX idx_trace_id (trace_id)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
+
+  // ─── workflow_runs 表 ──────────────────────────────────────
+  `CREATE TABLE IF NOT EXISTS workflow_runs (
+    id                       VARCHAR(36)  NOT NULL PRIMARY KEY,
+    run_id                   VARCHAR(36)  NOT NULL,
+    workflow_id              VARCHAR(100) NOT NULL,
+    status                   VARCHAR(30)  NOT NULL,
+    current_stage_id         VARCHAR(100) NULL,
+    waiting_human_stage_id   VARCHAR(100) NULL,
+    stage_results            JSON         NOT NULL,
+    error                    JSON         NULL,
+    created_at               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    updated_at               DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+    INDEX idx_workflow_runs_run_id (run_id),
+    INDEX idx_workflow_runs_workflow_id (workflow_id),
+    INDEX idx_workflow_runs_status (status)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`,
 ]
 
 async function main() {

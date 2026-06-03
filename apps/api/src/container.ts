@@ -18,7 +18,7 @@ import { AgentsService } from './features/agents/agents.service.js'
 import { ArtifactsService } from './features/artifacts/artifacts.service.js'
 import { WorkflowRunner } from './workflow/workflow-runner.js'
 import { WorkflowRegistry } from './workflow/workflow-registry.js'
-import { MemoryWorkflowStore } from './workflow/workflow-store.js'
+import { MemoryWorkflowStore, MySQLWorkflowStore } from './workflow/workflow-store.js'
 import type { WorkflowStore } from './workflow/workflow-store.js'
 import { ArtifactVersionManager } from './artifacts/artifact-version.js'
 import { humanGate } from './workflow/human-gate.js'
@@ -86,6 +86,12 @@ export function createContainer(): AppContainer {
   const store = createStore()
   const artifactStore = createArtifactStore()
 
+  // ─── Memory 层（根据环境选择 MySQL / 内存）────────────────
+  const memoryStore: MemoryStore = env.DATABASE_URL
+    ? new MySQLMemoryStore()
+    : new MemoryMemoryStore()
+  const memoryRetriever = new MemoryRetriever(memoryStore)
+
   // ─── ModelClient ─────────────────────────────────────────
   const modelClient = new VercelAIModelClient()
 
@@ -107,7 +113,7 @@ export function createContainer(): AppContainer {
   a2aRouter.register(createLocalAgentAdapter(summaryAgent))
 
   // ─── SupervisorAgent ─────────────────────────────────────
-  const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store)
+  const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store, memoryRetriever, memoryStore)
 
   // ─── RunManager ──────────────────────────────────────────
   const runManager = new RunManager(store, {
@@ -116,7 +122,7 @@ export function createContainer(): AppContainer {
   })
 
   // ─── Workflow 层 ─────────────────────────────────────────
-  const workflowStore = new MemoryWorkflowStore()
+  const workflowStore = env.DATABASE_URL ? new MySQLWorkflowStore() : new MemoryWorkflowStore()
   const workflowRegistry = new WorkflowRegistry()
   const workflowRunner = new WorkflowRunner(a2aClient, workflowStore, store)
 
@@ -129,12 +135,6 @@ export function createContainer(): AppContainer {
 
   // ─── Project Service ─────────────────────────────────
   const projectsService = new ProjectsService()
-
-  // ─── Memory 层（根据环境选择 MySQL / 内存）────────────────
-  const memoryStore: MemoryStore = env.DATABASE_URL
-    ? new MySQLMemoryStore()
-    : new MemoryMemoryStore()
-  const memoryRetriever = new MemoryRetriever(memoryStore)
 
   // ─── AgentTask Worker（异步 A2A 任务消费者）────────────────
   const agentTaskWorker = new AgentTaskWorker(store, a2aRouter, {

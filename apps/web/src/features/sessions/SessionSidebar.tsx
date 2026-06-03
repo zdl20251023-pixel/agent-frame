@@ -98,6 +98,8 @@ export function SessionSidebar({
         {[
           { href: '/agents', icon: '⚡', label: 'Agent 中心' },
           { href: '/workflows', icon: '◈', label: 'Workflow' },
+          { href: '/projects', icon: '▣', label: 'Project' },
+          { href: '/usage', icon: '↗', label: 'Usage' },
         ].map(({ href, icon, label }) => (
           <a
             key={href}

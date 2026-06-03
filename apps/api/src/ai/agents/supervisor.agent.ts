@@ -17,8 +17,11 @@ import {
   supervisorPlanPrompt,
   supervisorAnswerPrompt,
 } from '../prompts/index.js'
-import { now } from '../../shared/utils/id.js'
+import { generateId, now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
+import type { MemoryRetriever } from '../../memory/memory-retriever.js'
+import type { MemoryStore } from '../../memory/memory.types.js'
+import { memoryPolicy } from '../../memory/memory-policy.js'
 
 // ============================================================
 // SupervisorAgent — 调度 Agent
@@ -41,6 +44,8 @@ export class SupervisorAgent {
     private modelClient: ModelClient,
     private a2aClient: A2AClient,
     private store: RunStore,
+    private memoryRetriever?: MemoryRetriever,
+    private memoryStore?: MemoryStore,
   ) {
     this.stepManager = new StepManager(store)
   }
@@ -52,6 +57,10 @@ export class SupervisorAgent {
     const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
+    const memorySummary = await this.recallMemory(input, context, log)
+    const userPrompt = memorySummary
+      ? `${memorySummary}\n\n用户问题：${payload.message}`
+      : payload.message
 
     log.info('[SupervisorAgent] Analyzing task', { message: payload.message })
 
@@ -68,7 +77,7 @@ export class SupervisorAgent {
       const planResult = await this.modelClient.generate({
         model: 'fast.chat',
         system: SUPERVISOR_PLAN_SYSTEM,
-        prompt: supervisorPlanPrompt(payload.message),
+        prompt: supervisorPlanPrompt(userPrompt),
         metadata: { runId, agentId: this.agentId, traceId, stepId: planStep.id },
       })
 
@@ -113,7 +122,7 @@ export class SupervisorAgent {
           fromAgentId: SUPERVISOR_AGENT_ID,
           toAgentId: RESEARCH_AGENT_ID,
           mode: A2A_CALL_MODES.SYNC,
-          input: { query: plan.researchQuery ?? payload.message },
+          input: { query: plan.researchQuery ?? userPrompt },
           timeoutMs: 60000,
         },
         context,
@@ -156,7 +165,7 @@ export class SupervisorAgent {
       for await (const event of this.modelClient.stream({
         model: 'fast.chat',
         system: SUPERVISOR_ANSWER_SYSTEM,
-        prompt: supervisorAnswerPrompt(payload.message, finalContent),
+        prompt: supervisorAnswerPrompt(userPrompt, finalContent),
         metadata: { runId, agentId: this.agentId, traceId, stepId: answerStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {
@@ -177,7 +186,67 @@ export class SupervisorAgent {
     }
 
     log.info('[SupervisorAgent] Task completed', { answerLength: answer.length })
+    await this.writeCandidateMemory(input, context, answer, log)
     logger.info(`[UserMessage] 最终返回给用户的回答: ${answer}`)
     return { output: { answer } }
+  }
+
+  private async recallMemory(
+    input: AgentInput<SupervisorPayload>,
+    context: RunContext,
+    log: ReturnType<typeof logger.child>,
+  ): Promise<string> {
+    if (!this.memoryRetriever) return ''
+    try {
+      const result = await this.memoryRetriever.recall(
+        {
+          userId: context.userId,
+          sessionId: input.payload.sessionId,
+          agentId: this.agentId,
+        },
+        ['preference', 'constraint', 'summary', 'instruction'],
+        5,
+      )
+      if (result.items.length > 0) {
+        log.info('[SupervisorAgent] Memory recalled', { memoryCount: result.items.length })
+      }
+      return result.summary
+    } catch {
+      log.warn('[SupervisorAgent] Memory recall failed', { errorCode: 'MEMORY_RECALL_FAILED' })
+      return ''
+    }
+  }
+
+  private async writeCandidateMemory(
+    input: AgentInput<SupervisorPayload>,
+    context: RunContext,
+    answer: string,
+    log: ReturnType<typeof logger.child>,
+  ): Promise<void> {
+    if (!this.memoryStore || !context.userId || !answer.trim()) return
+
+    const candidate = {
+      scope: 'user' as const,
+      scopeId: context.userId,
+      kind: 'summary',
+      content: {
+        question: input.payload.message.slice(0, 500),
+        answerPreview: answer.slice(0, 1000),
+      },
+      metadata: {
+        source: 'supervisor-agent',
+        reviewStatus: 'candidate',
+        runId: context.runId,
+        sessionId: input.payload.sessionId,
+      },
+    }
+
+    try {
+      memoryPolicy.assertCanWrite(candidate)
+      await this.memoryStore.create({ ...candidate, id: `mem-${generateId()}` })
+      log.info('[SupervisorAgent] Candidate memory written', { userId: context.userId })
+    } catch {
+      log.warn('[SupervisorAgent] Candidate memory write failed', { errorCode: 'MEMORY_WRITE_FAILED' })
+    }
   }
 }

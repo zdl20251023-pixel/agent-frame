@@ -16,10 +16,24 @@ const EVENT_COLORS: Record<string, string> = {
   [EVENT_TYPES.AGENT_CALL_STARTED]: '#06b6d4',
   [EVENT_TYPES.AGENT_CALL_COMPLETED]: '#10b981',
   [EVENT_TYPES.AGENT_CALL_FAILED]: '#f43f5e',
+  [EVENT_TYPES.AGENT_CALL_QUEUED]: '#818cf8',
+  [EVENT_TYPES.AGENT_CALL_PROGRESS]: '#38bdf8',
+  [EVENT_TYPES.AGENT_CALL_CANCELLED]: '#f59e0b',
   [EVENT_TYPES.TOOL_CALL]: '#f97316',
   [EVENT_TYPES.TOOL_RESULT]: '#84cc16',
   [EVENT_TYPES.ARTIFACT_CREATED]: '#a78bfa',
   [EVENT_TYPES.ARTIFACT_VERSION_CREATED]: '#c084fc',
+  [EVENT_TYPES.WORKFLOW_STARTED]: '#38bdf8',
+  [EVENT_TYPES.WORKFLOW_COMPLETED]: '#22c55e',
+  [EVENT_TYPES.WORKFLOW_FAILED]: '#ef4444',
+  [EVENT_TYPES.WORKFLOW_CANCELLED]: '#f59e0b',
+  [EVENT_TYPES.WORKFLOW_STAGE_STARTED]: '#60a5fa',
+  [EVENT_TYPES.WORKFLOW_STAGE_COMPLETED]: '#34d399',
+  [EVENT_TYPES.WORKFLOW_STAGE_FAILED]: '#fb7185',
+  [EVENT_TYPES.WORKFLOW_STAGE_SKIPPED]: '#94a3b8',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_WAITING]: '#facc15',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_APPROVED]: '#4ade80',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_REJECTED]: '#f87171',
 }
 
 const EVENT_ICONS: Record<string, string> = {
@@ -31,10 +45,24 @@ const EVENT_ICONS: Record<string, string> = {
   [EVENT_TYPES.AGENT_CALL_STARTED]: '→',
   [EVENT_TYPES.AGENT_CALL_COMPLETED]: '←',
   [EVENT_TYPES.AGENT_CALL_FAILED]: '✗',
+  [EVENT_TYPES.AGENT_CALL_QUEUED]: '⏳',
+  [EVENT_TYPES.AGENT_CALL_PROGRESS]: '…',
+  [EVENT_TYPES.AGENT_CALL_CANCELLED]: '⊘',
   [EVENT_TYPES.TOOL_CALL]: '⚙',
   [EVENT_TYPES.TOOL_RESULT]: '✓',
   [EVENT_TYPES.ARTIFACT_CREATED]: '📄',
   [EVENT_TYPES.ARTIFACT_VERSION_CREATED]: '📝',
+  [EVENT_TYPES.WORKFLOW_STARTED]: '◇',
+  [EVENT_TYPES.WORKFLOW_COMPLETED]: '◆',
+  [EVENT_TYPES.WORKFLOW_FAILED]: '!',
+  [EVENT_TYPES.WORKFLOW_CANCELLED]: '⊘',
+  [EVENT_TYPES.WORKFLOW_STAGE_STARTED]: '▷',
+  [EVENT_TYPES.WORKFLOW_STAGE_COMPLETED]: '✓',
+  [EVENT_TYPES.WORKFLOW_STAGE_FAILED]: '✗',
+  [EVENT_TYPES.WORKFLOW_STAGE_SKIPPED]: '↷',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_WAITING]: '⏸',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_APPROVED]: '✓',
+  [EVENT_TYPES.WORKFLOW_HUMAN_GATE_REJECTED]: '✗',
 }
 
 function formatEventDetails(event: AgentEvent): string {
@@ -55,6 +83,12 @@ function formatEventDetails(event: AgentEvent): string {
       return `${event.fromAgentId} ← ${event.toAgentId}  (${event.latencyMs}ms)`
     case EVENT_TYPES.AGENT_CALL_FAILED:
       return `${event.error.code}: ${event.error.message}`
+    case EVENT_TYPES.AGENT_CALL_QUEUED:
+      return `${event.fromAgentId} → ${event.toAgentId} queued  task=${event.taskId} child=${event.childRunId}`
+    case EVENT_TYPES.AGENT_CALL_PROGRESS:
+      return `task=${event.taskId} child=${event.childRunId}${event.progress !== undefined ? ` ${event.progress}%` : ''}${event.message ? ` — ${event.message}` : ''}`
+    case EVENT_TYPES.AGENT_CALL_CANCELLED:
+      return `task=${event.taskId} child=${event.childRunId} cancelled${event.reason ? ` — ${event.reason}` : ''}`
     case EVENT_TYPES.TOOL_CALL:
       return `[${event.agentId}] ${event.toolName}`
     case EVENT_TYPES.TOOL_RESULT:
@@ -63,6 +97,30 @@ function formatEventDetails(event: AgentEvent): string {
       return `type=${event.artifactType}  title=${event.title ?? '-'}`
     case EVENT_TYPES.ARTIFACT_VERSION_CREATED:
       return `artifact=${event.artifactId}  v${event.version}`
+    case EVENT_TYPES.WORKFLOW_STARTED:
+      return `Workflow started: ${event.workflowId ?? event.workflowRunId ?? '-'}`
+    case EVENT_TYPES.WORKFLOW_COMPLETED:
+      return `Workflow completed: ${event.workflowId ?? event.workflowRunId ?? '-'}`
+    case EVENT_TYPES.WORKFLOW_FAILED:
+      return event.error ? `${event.error.code}: ${event.error.message}` : 'Workflow failed'
+    case EVENT_TYPES.WORKFLOW_CANCELLED:
+      return `Workflow cancelled: ${event.workflowId ?? event.workflowRunId ?? '-'}`
+    case EVENT_TYPES.WORKFLOW_STAGE_STARTED:
+      return `Stage started: ${event.stageName ?? event.stageId}${event.agentId ? ` (${event.agentId})` : ''}`
+    case EVENT_TYPES.WORKFLOW_STAGE_COMPLETED:
+      return `Stage completed: ${event.stageName ?? event.stageId}`
+    case EVENT_TYPES.WORKFLOW_STAGE_FAILED:
+      return event.error
+        ? `Stage failed: ${event.stageName ?? event.stageId} — ${event.error.message}`
+        : `Stage failed: ${event.stageName ?? event.stageId}`
+    case EVENT_TYPES.WORKFLOW_STAGE_SKIPPED:
+      return `Stage skipped: ${event.stageName ?? event.stageId}`
+    case EVENT_TYPES.WORKFLOW_HUMAN_GATE_WAITING:
+      return `等待人工审核: ${event.stageName ?? event.stageId}`
+    case EVENT_TYPES.WORKFLOW_HUMAN_GATE_APPROVED:
+      return `人工审核通过: ${event.stageName ?? event.stageId}`
+    case EVENT_TYPES.WORKFLOW_HUMAN_GATE_REJECTED:
+      return `人工审核拒绝: ${event.stageName ?? event.stageId}${event.reason ? ` — ${event.reason}` : ''}`
     default:
       return ''
   }

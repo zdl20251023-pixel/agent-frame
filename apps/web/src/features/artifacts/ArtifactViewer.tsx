@@ -100,6 +100,9 @@ export function ArtifactViewer({ artifactId, showVersionHistory = false }: Artif
         <span className="artifact-meta-item">
           🏃 Run: <code>{artifact.runId.slice(0, 16)}…</code>
         </span>
+        <a className="artifact-meta-item" href={`/artifacts/${artifact.id}`}>
+          打开详情
+        </a>
         <span className="artifact-meta-item">
           🕐 {new Date(artifact.updatedAt).toLocaleString()}
         </span>

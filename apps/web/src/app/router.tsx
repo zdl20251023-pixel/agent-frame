@@ -4,6 +4,9 @@ import { AuthPage } from '../features/auth/AuthPage.tsx'
 import { ChatWorkspace } from '../features/chat/ChatWorkspace.tsx'
 import { AgentsPage } from '../features/agents/AgentsPage.tsx'
 import { WorkflowsPage } from '../features/workflows/WorkflowsPage.tsx'
+import { ProjectsPage } from '../features/projects/ProjectsPage.tsx'
+import { UsagePage } from '../features/usage/UsagePage.tsx'
+import { ArtifactPage } from '../features/artifacts/ArtifactPage.tsx'
 
 // ============================================================
 // 路由守卫组件
@@ -97,6 +100,30 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <WorkflowsPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/projects',
+    element: (
+      <ProtectedRoute>
+        <ProjectsPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/usage',
+    element: (
+      <ProtectedRoute>
+        <UsagePage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/artifacts/:artifactId',
+    element: (
+      <ProtectedRoute>
+        <ArtifactPage />
       </ProtectedRoute>
     ),
   },

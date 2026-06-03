@@ -143,6 +143,57 @@ export type AgentEvent =
       timestamp: string
     }
 
+  // ─── Workflow 事件 ────────────────────────────────────────
+  | {
+      type:
+        | typeof EVENT_TYPES.WORKFLOW_STARTED
+        | typeof EVENT_TYPES.WORKFLOW_COMPLETED
+        | typeof EVENT_TYPES.WORKFLOW_CANCELLED
+      runId: string
+      workflowRunId?: string
+      workflowId?: string
+      timestamp: string
+    }
+  | {
+      type: typeof EVENT_TYPES.WORKFLOW_FAILED
+      runId: string
+      workflowRunId?: string
+      workflowId?: string
+      error?: { code: string; message: string }
+      timestamp: string
+    }
+  | {
+      type:
+        | typeof EVENT_TYPES.WORKFLOW_STAGE_STARTED
+        | typeof EVENT_TYPES.WORKFLOW_STAGE_COMPLETED
+        | typeof EVENT_TYPES.WORKFLOW_STAGE_SKIPPED
+      runId: string
+      stageId: string
+      stageName?: string
+      agentId?: string
+      timestamp: string
+    }
+  | {
+      type: typeof EVENT_TYPES.WORKFLOW_STAGE_FAILED
+      runId: string
+      stageId: string
+      stageName?: string
+      agentId?: string
+      error?: { code: string; message: string }
+      timestamp: string
+    }
+  | {
+      type:
+        | typeof EVENT_TYPES.WORKFLOW_HUMAN_GATE_WAITING
+        | typeof EVENT_TYPES.WORKFLOW_HUMAN_GATE_APPROVED
+        | typeof EVENT_TYPES.WORKFLOW_HUMAN_GATE_REJECTED
+      runId: string
+      stageId: string
+      stageName?: string
+      reason?: string
+      timestamp: string
+    }
+
 // 判断是否为终态事件（用于 SSE 关闭连接）
 export function isTerminalEvent(event: AgentEvent): boolean {
   return (

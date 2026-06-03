@@ -94,6 +94,16 @@ export class AgentTaskStore {
     return rows.map(this.mapRow)
   }
 
+  async findByChildRunId(childRunId: string): Promise<AgentTask | null> {
+    const rows = await this.db
+      .select()
+      .from(agentTasks)
+      .where(eq(agentTasks.childRunId, childRunId))
+      .limit(1)
+    if (rows.length === 0) return null
+    return this.mapRow(rows[0])
+  }
+
   /** 获取待执行任务（供 Worker 轮询，按优先级升序）*/
   async claimNextPending(workerLimit = 1): Promise<AgentTask[]> {
     const rows = await this.db

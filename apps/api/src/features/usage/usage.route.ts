@@ -1,9 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { isAppError } from '../../shared/errors/app-error.js'
-import { requireDb } from '../../shared/db/client.js'
-import { modelCallLogs } from '../../shared/db/schema.js'
-import { eq, and, gte, sum, count } from 'drizzle-orm'
+import { usageService } from './usage.service.js'
 
 // ============================================================
 // features/usage/ — Token / 成本统计 API
@@ -17,22 +15,6 @@ import { eq, and, gte, sum, count } from 'drizzle-orm'
 // GET /usage/by-agent?agentId=xxx&period=day   — 按 Agent 聚合用量
 // ============================================================
 
-function getStartDate(period: string): Date {
-  const now = new Date()
-  if (period === 'week') now.setDate(now.getDate() - 7)
-  else if (period === 'month') now.setMonth(now.getMonth() - 1)
-  else now.setHours(0, 0, 0, 0) // default: today
-  return now
-}
-
-function toMysqlDatetime(d: Date): string {
-  const pad = (n: number, len = 2) => String(n).padStart(len, '0')
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.000`
-  )
-}
-
 export const usageRoute = new Elysia({ prefix: '/usage' })
   .use(requireAuthPlugin)
 
@@ -41,29 +23,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
     '/summary',
     async ({ query, set }) => {
       try {
-        const period = (query.period as string) || 'day'
-        const startDate = getStartDate(period)
-
-        const db = requireDb()
-        const result = await db
-          .select({
-            totalCalls: count(),
-            totalInputTokens: sum(modelCallLogs.inputTokens),
-            totalOutputTokens: sum(modelCallLogs.outputTokens),
-            totalTokens: sum(modelCallLogs.totalTokens),
-          })
-          .from(modelCallLogs)
-          .where(gte(modelCallLogs.createdAt, toMysqlDatetime(startDate)))
-
-        const row = result[0]
-        return {
-          period,
-          since: startDate.toISOString(),
-          totalCalls: Number(row?.totalCalls ?? 0),
-          totalInputTokens: Number(row?.totalInputTokens ?? 0),
-          totalOutputTokens: Number(row?.totalOutputTokens ?? 0),
-          totalTokens: Number(row?.totalTokens ?? 0),
-        }
+        return await usageService.getSummary(query.period)
       } catch (err) {
         if (isAppError(err)) { set.status = err.statusCode; return err.toJSON() }
         throw err
@@ -85,36 +45,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
         return { code: 'VALIDATION_ERROR', message: 'runId is required' }
       }
       try {
-        const db = requireDb()
-        const rows = await db
-          .select()
-          .from(modelCallLogs)
-          .where(eq(modelCallLogs.runId, query.runId))
-
-        const totalInputTokens = rows.reduce((s, r) => s + (r.inputTokens ?? 0), 0)
-        const totalOutputTokens = rows.reduce((s, r) => s + (r.outputTokens ?? 0), 0)
-        const totalCostUsd = rows.reduce(
-          (s, r) => s + (r.estimatedCostUsd ? Number(r.estimatedCostUsd) : 0),
-          0,
-        )
-
-        return {
-          runId: query.runId,
-          calls: rows.length,
-          totalInputTokens,
-          totalOutputTokens,
-          totalCostUsd: Math.round(totalCostUsd * 1_000_000) / 1_000_000,
-          records: rows.map((r) => ({
-            agentId: r.agentId,
-            modelAlias: r.modelAlias,
-            actualModel: r.actualModel,
-            inputTokens: r.inputTokens,
-            outputTokens: r.outputTokens,
-            latencyMs: r.latencyMs,
-            finishReason: r.finishReason,
-            createdAt: r.createdAt,
-          })),
-        }
+        return await usageService.getByRun(query.runId)
       } catch (err) {
         if (isAppError(err)) { set.status = err.statusCode; return err.toJSON() }
         throw err
@@ -136,35 +67,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
         return { code: 'VALIDATION_ERROR', message: 'agentId is required' }
       }
       try {
-        const period = (query.period as string) || 'day'
-        const startDate = getStartDate(period)
-
-        const db = requireDb()
-        const result = await db
-          .select({
-            totalCalls: count(),
-            totalInputTokens: sum(modelCallLogs.inputTokens),
-            totalOutputTokens: sum(modelCallLogs.outputTokens),
-            totalTokens: sum(modelCallLogs.totalTokens),
-          })
-          .from(modelCallLogs)
-          .where(
-            and(
-              eq(modelCallLogs.agentId, query.agentId),
-              gte(modelCallLogs.createdAt, toMysqlDatetime(startDate)),
-            ),
-          )
-
-        const row = result[0]
-        return {
-          agentId: query.agentId,
-          period,
-          since: startDate.toISOString(),
-          totalCalls: Number(row?.totalCalls ?? 0),
-          totalInputTokens: Number(row?.totalInputTokens ?? 0),
-          totalOutputTokens: Number(row?.totalOutputTokens ?? 0),
-          totalTokens: Number(row?.totalTokens ?? 0),
-        }
+        return await usageService.getByAgent(query.agentId, query.period)
       } catch (err) {
         if (isAppError(err)) { set.status = err.statusCode; return err.toJSON() }
         throw err
