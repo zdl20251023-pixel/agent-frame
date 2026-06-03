@@ -32,8 +32,8 @@ export class ResearchAgent {
     this.stepManager = new StepManager(store)
   }
 
-  async execute(input: AgentInput<{ query: string }>, context: RunContext): Promise<AgentOutput<{ findings: string; artifactId?: string }>> {
-    const { runId, stepId, traceId, payload } = input
+  async execute(input: AgentInput<{ query: string }>, _context: RunContext): Promise<AgentOutput<{ findings: string; artifactId?: string }>> {
+    const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
 
@@ -114,7 +114,7 @@ export class ResearchAgent {
       }))
 
       log.info('[ResearchAgent] Artifact created', { artifactId: artifact.id })
-    } catch (err) {
+    } catch {
       // Artifact 保存失败不影响主流程，但记录错误
       log.error('[ResearchAgent] Failed to save artifact', { errorCode: 'ARTIFACT_SAVE_FAILED' })
     }

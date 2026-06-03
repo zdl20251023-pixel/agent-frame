@@ -1,6 +1,5 @@
 import { Elysia, t } from 'elysia'
 import { pluginRegistry } from '../../plugins/plugin-registry.js'
-import { isAppError } from '../../shared/errors/app-error.js'
 
 // ============================================================
 // features/plugins/ — Plugin 查询 API

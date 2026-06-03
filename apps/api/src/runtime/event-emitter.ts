@@ -19,7 +19,7 @@ export class RunEventEmitter {
     // 1. 先持久化（RunStore.appendEvent）
     try {
       await this.store.appendEvent(runId, event)
-    } catch (err) {
+    } catch {
       log.error('[EventEmitter] Failed to persist event', { errorCode: 'INTERNAL_ERROR' })
     }
 

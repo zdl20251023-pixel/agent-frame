@@ -1,4 +1,4 @@
-import { drizzle } from 'drizzle-orm/mysql2'
+import { drizzle, type MySql2Database } from 'drizzle-orm/mysql2'
 import mysql from 'mysql2/promise'
 import * as schema from './schema.js'
 import { env } from '../config/env.js'
@@ -8,8 +8,10 @@ import { logger } from '../observability/logger.js'
 // MySQL 数据库客户端（Drizzle ORM）
 // ============================================================
 
+export type Db = MySql2Database<typeof schema>
+
 let _pool: mysql.Pool | null = null
-let _db: ReturnType<typeof drizzle<typeof schema>> | null = null
+let _db: Db | null = null
 
 export function getPool(): mysql.Pool {
   if (!_pool) {
@@ -27,11 +29,19 @@ export function getPool(): mysql.Pool {
   return _pool
 }
 
-export function getDb() {
+export function getDb(): Db {
   if (!_db) {
-    _db = drizzle(getPool(), { schema, mode: 'default' })
+    _db = drizzle(getPool(), { schema, mode: 'default' }) as Db
   }
   return _db
+}
+
+/** 在需要数据库的路由/服务中显式校验 DATABASE_URL */
+export function requireDb(): Db {
+  if (!env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not configured')
+  }
+  return getDb()
 }
 
 export async function closeDb(): Promise<void> {
@@ -43,5 +53,3 @@ export async function closeDb(): Promise<void> {
   }
 }
 
-// 类型别名，方便引用
-export type Db = ReturnType<typeof getDb>

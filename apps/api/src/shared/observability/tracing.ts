@@ -54,7 +54,7 @@ export const tracingPlugin = new Elysia({ name: 'tracing' })
       errorCode: 'HTTP_ERROR',
       error: error instanceof Error ? error.message : String(error),
     })
-    if (set && typeof set.headers === 'object') {
+    if (traceId && set && typeof set.headers === 'object') {
       (set.headers as Record<string, string>)['x-trace-id'] = traceId
     }
   })

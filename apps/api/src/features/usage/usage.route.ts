@@ -1,7 +1,7 @@
 import { Elysia, t } from 'elysia'
 import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { isAppError } from '../../shared/errors/app-error.js'
-import { getDb } from '../../shared/db/client.js'
+import { requireDb } from '../../shared/db/client.js'
 import { modelCallLogs } from '../../shared/db/schema.js'
 import { eq, and, gte, sum, count } from 'drizzle-orm'
 
@@ -44,7 +44,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
         const period = (query.period as string) || 'day'
         const startDate = getStartDate(period)
 
-        const db = getDb()
+        const db = requireDb()
         const result = await db
           .select({
             totalCalls: count(),
@@ -85,7 +85,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
         return { code: 'VALIDATION_ERROR', message: 'runId is required' }
       }
       try {
-        const db = getDb()
+        const db = requireDb()
         const rows = await db
           .select()
           .from(modelCallLogs)
@@ -139,7 +139,7 @@ export const usageRoute = new Elysia({ prefix: '/usage' })
         const period = (query.period as string) || 'day'
         const startDate = getStartDate(period)
 
-        const db = getDb()
+        const db = requireDb()
         const result = await db
           .select({
             totalCalls: count(),

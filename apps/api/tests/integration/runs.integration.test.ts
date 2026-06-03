@@ -11,7 +11,7 @@ describe('Runs Integration Tests', () => {
     store = new MemoryRunStore()
     runManager = new RunManager(store, {
       agentId: 'mock-agent',
-      execute: async (input: AgentInput<any>, ctx) => {
+      execute: async (input: AgentInput<any>, _ctx) => {
         // mock logic
         if (input.payload?.fail) throw new Error('Mock failure')
         return { output: { result: 'ok' } }

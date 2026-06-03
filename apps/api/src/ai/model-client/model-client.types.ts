@@ -70,7 +70,7 @@ export type ModelStreamEvent =
   | { type: typeof MODEL_STREAM_EVENT_TYPES.MODEL_FAILED; error: ModelError; timestamp: string }
 
 // ─── 结构化生成 ───────────────────────────────────────────────
-export type GenerateObjectInput<T> = {
+export type GenerateObjectInput = {
   model: string
   system?: string
   prompt: string

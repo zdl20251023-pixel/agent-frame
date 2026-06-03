@@ -110,7 +110,7 @@ export const rateLimitPlugin = new Elysia({ name: 'rate-limit' })
 
     if (!allowed) {
       set.status = 429
-      throw new AppError('RATE_LIMITED', 'Too many requests. Please slow down.', { statusCode: 429 })
+      throw new AppError('RATE_LIMIT', 'Too many requests. Please slow down.', { statusCode: 429 })
     }
   })
 
@@ -136,6 +136,6 @@ export const runCreateRateLimitPlugin = new Elysia({ name: 'run-create-rate-limi
 
     if (!allowed) {
       set.status = 429
-      throw new AppError('RATE_LIMITED', 'Too many run creation requests. Please wait.', { statusCode: 429 })
+      throw new AppError('RATE_LIMIT', 'Too many run creation requests. Please wait.', { statusCode: 429 })
     }
   })

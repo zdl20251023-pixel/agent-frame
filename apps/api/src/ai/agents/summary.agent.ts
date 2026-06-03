@@ -33,9 +33,9 @@ export class SummaryAgent {
 
   async execute(
     input: AgentInput<{ content: string; maxLength?: number }>,
-    context: RunContext,
+    _context: RunContext,
   ): Promise<AgentOutput<{ summary: string; artifactId?: string }>> {
-    const { runId, stepId, traceId, payload } = input
+    const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
 
@@ -115,7 +115,7 @@ export class SummaryAgent {
       }))
 
       log.info('[SummaryAgent] Artifact created', { artifactId: artifact.id })
-    } catch (err) {
+    } catch {
       // Artifact 保存失败不影响主流程，但记录错误
       log.error('[SummaryAgent] Failed to save artifact', { errorCode: 'ARTIFACT_SAVE_FAILED' })
     }

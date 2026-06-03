@@ -1,4 +1,5 @@
-import { getDb } from '../../shared/db/client.js'
+import { requireDb } from '../../shared/db/client.js'
+import { env } from '../../shared/config/env.js'
 import { modelCallLogs } from '../../shared/db/schema.js'
 import { logger } from '../../shared/observability/logger.js'
 
@@ -28,8 +29,10 @@ export type ModelCallRecord = {
 
 export class UsageLogger {
   async log(record: ModelCallRecord): Promise<void> {
+    if (!env.DATABASE_URL) return
+
     try {
-      const db = getDb()
+      const db = requireDb()
       const now = new Date()
       const pad = (n: number, len = 2) => String(n).padStart(len, '0')
       const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ` +
@@ -52,7 +55,7 @@ export class UsageLogger {
         retryCount: record.retryCount ?? 0,
         createdAt: ts,
       })
-    } catch (err) {
+    } catch {
       // 用量记录失败不影响主流程，只打 warn
       logger.warn('[UsageLogger] Failed to write model_call_log', {
         runId: record.runId,

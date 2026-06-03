@@ -3,8 +3,7 @@ import { A2APolicy } from '../../src/a2a/a2a-policy.js'
 import { A2ARouter } from '../../src/a2a/a2a-router.js'
 import { A2AClient } from '../../src/a2a/a2a-client.js'
 import { MemoryRunStore } from '../../src/runtime/stores/memory-run-store.js'
-import type { AgentInput, AgentOutput, A2ARequest } from '@agent-frame/shared'
-import { AppError } from '../../src/shared/errors/app-error.js'
+import type { AgentInput, A2ARequest } from '@agent-frame/shared'
 
 describe('A2A Integration Tests', () => {
   let policy: A2APolicy
@@ -25,11 +24,11 @@ describe('A2A Integration Tests', () => {
     // Setup mock agents
     router.register({
       agentId: 'agent-a',
-      execute: async (input: AgentInput<any>) => ({ output: { ok: true } }),
+      execute: async (_input: AgentInput<any>) => ({ output: { ok: true } }),
     })
     router.register({
       agentId: 'agent-b',
-      execute: async (input: AgentInput<any>) => ({ output: { ok: true } }),
+      execute: async (_input: AgentInput<any>) => ({ output: { ok: true } }),
     })
     router.register({
       agentId: 'agent-slow',

@@ -4,8 +4,7 @@ import type { RunContext } from '../runtime/run-manager.js'
 import { agentTaskStore, type AgentTask } from './agent-task.store.js'
 import { RunEventEmitter } from '../runtime/event-emitter.js'
 import { logger } from '../shared/observability/logger.js'
-import { AGENT_TASK_STATUSES, EVENT_TYPES } from '@agent-frame/shared'
-import { now } from '../shared/utils/id.js'
+import { buildA2ACompletedEvent, buildA2AFailedEvent, buildA2AStartedEvent } from '../a2a/a2a-events.js'
 
 // ============================================================
 // queues/agent-task.worker.ts — 异步 Agent 任务消费者
@@ -76,7 +75,7 @@ export class AgentTaskWorker {
       // 并行处理（小批量）
       await Promise.all(tasks.map((task) => this.processTask(task)))
       return tasks.length
-    } catch (err) {
+    } catch {
       logger.error('[AgentTaskWorker] Batch processing error', { errorCode: 'WORKER_ERROR' })
       return 0
     } finally {
@@ -94,15 +93,18 @@ export class AgentTaskWorker {
 
     log.info('[AgentTaskWorker] Processing task')
 
+    const startMs = Date.now()
+
     // 发出 agent.call.started 事件
-    await this.emitter.emit({
-      type: EVENT_TYPES.AGENT_CALL_STARTED,
-      runId: task.parentRunId,
-      fromAgentId: task.fromAgentId,
-      toAgentId: task.toAgentId,
-      mode: 'async',
-      timestamp: now(),
-    } as Parameters<RunEventEmitter['emit']>[0])
+    await this.emitter.emit(
+      buildA2AStartedEvent({
+        runId: task.parentRunId,
+        traceId: task.childRunId,
+        stepId: task.id,
+        fromAgentId: task.fromAgentId,
+        toAgentId: task.toAgentId,
+      }),
+    )
 
     try {
       // 解析目标 Agent（通过 A2ARouter）
@@ -133,14 +135,16 @@ export class AgentTaskWorker {
       await agentTaskStore.markCompleted(task.id, result.output)
 
       // 发出 completed 事件
-      await this.emitter.emit({
-        type: EVENT_TYPES.AGENT_CALL_COMPLETED,
-        runId: task.parentRunId,
-        fromAgentId: task.fromAgentId,
-        toAgentId: task.toAgentId,
-        mode: 'async',
-        timestamp: now(),
-      } as Parameters<RunEventEmitter['emit']>[0])
+      await this.emitter.emit(
+        buildA2ACompletedEvent({
+          runId: task.parentRunId,
+          traceId: task.childRunId,
+          stepId: task.id,
+          fromAgentId: task.fromAgentId,
+          toAgentId: task.toAgentId,
+          latencyMs: Date.now() - startMs,
+        }),
+      )
 
       log.info('[AgentTaskWorker] Task completed')
     } catch (err: unknown) {
@@ -157,14 +161,16 @@ export class AgentTaskWorker {
       await agentTaskStore.markFailed(task.id, error, canRetry)
 
       // 发出 failed 事件
-      await this.emitter.emit({
-        type: EVENT_TYPES.AGENT_CALL_FAILED,
-        runId: task.parentRunId,
-        fromAgentId: task.fromAgentId,
-        toAgentId: task.toAgentId,
-        error,
-        timestamp: now(),
-      } as Parameters<RunEventEmitter['emit']>[0])
+      await this.emitter.emit(
+        buildA2AFailedEvent({
+          runId: task.parentRunId,
+          traceId: task.childRunId,
+          stepId: task.id,
+          fromAgentId: task.fromAgentId,
+          toAgentId: task.toAgentId,
+          error,
+        }),
+      )
 
       log.error('[AgentTaskWorker] Task failed', { errorCode: 'WORKER_TASK_FAILED', error: message })
     }

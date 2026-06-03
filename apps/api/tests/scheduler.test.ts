@@ -29,7 +29,6 @@ describe('Scheduler', () => {
 
   it('should queue tasks when maxConcurrent is reached', async () => {
     const order: number[] = []
-    let slot = 0
 
     const makeLongTask = (n: number) =>
       scheduler.schedule(

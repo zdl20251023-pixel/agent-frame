@@ -85,7 +85,7 @@ export class VercelAIModelClient implements ModelClient {
         system: input.system,
         prompt: input.prompt,
         temperature: input.temperature ?? modelDef.temperature,
-        maxTokens: input.maxTokens ?? modelDef.maxTokens,
+        maxOutputTokens: input.maxTokens ?? modelDef.maxTokens,
       })
 
       const latencyMs = Date.now() - startMs
@@ -169,7 +169,7 @@ export class VercelAIModelClient implements ModelClient {
         system: input.system,
         prompt: input.prompt,
         temperature: input.temperature ?? modelDef.temperature,
-        maxTokens: input.maxTokens ?? modelDef.maxTokens,
+        maxOutputTokens: input.maxTokens ?? modelDef.maxTokens,
       })
 
       for await (const part of result.fullStream) {
@@ -238,7 +238,7 @@ export class VercelAIModelClient implements ModelClient {
     }
   }
 
-  async generateObject<T>(input: GenerateObjectInput<T>): Promise<T> {
+  async generateObject<T>(input: GenerateObjectInput): Promise<T> {
     const modelDef = models[input.model]
     if (!modelDef) throw new AppError('MODEL_CALL_FAILED', `Unknown model alias: ${input.model}`)
 

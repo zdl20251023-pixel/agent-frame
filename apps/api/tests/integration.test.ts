@@ -16,21 +16,19 @@ import type { RunContext } from '../src/runtime/run-manager.js'
 describe('Run Lifecycle', () => {
   let store: MemoryRunStore
   let runManager: RunManager
-  let a2aClient: A2AClient
-  let a2aRouter: A2ARouter
 
   beforeEach(() => {
     store = new MemoryRunStore()
 
     const policy = new A2APolicy()
-    a2aRouter = new A2ARouter()
-    a2aClient = new A2AClient(store, policy, a2aRouter)
+    const a2aRouter = new A2ARouter()
+    new A2AClient(store, policy, a2aRouter)
   })
 
   it('should create a run and return queued status', async () => {
     runManager = new RunManager(store, {
       agentId: 'test-agent',
-      execute: async (input: AgentInput, ctx: RunContext): Promise<AgentOutput> => {
+      execute: async (_input: AgentInput, _ctx: RunContext): Promise<AgentOutput> => {
         return { output: { result: 'ok' } }
       },
     })
@@ -49,7 +47,7 @@ describe('Run Lifecycle', () => {
   it('should complete a run and update status', async () => {
     runManager = new RunManager(store, {
       agentId: 'test-agent',
-      execute: async (input: AgentInput, ctx: RunContext): Promise<AgentOutput> => {
+      execute: async (_input: AgentInput, _ctx: RunContext): Promise<AgentOutput> => {
         return { output: { result: 'completed' } }
       },
     })
@@ -69,7 +67,7 @@ describe('Run Lifecycle', () => {
   it('should record events during run', async () => {
     runManager = new RunManager(store, {
       agentId: 'test-agent',
-      execute: async (input: AgentInput, ctx: RunContext): Promise<AgentOutput> => {
+      execute: async (_input: AgentInput, _ctx: RunContext): Promise<AgentOutput> => {
         return { output: {} }
       },
     })
@@ -87,7 +85,7 @@ describe('Run Lifecycle', () => {
   it('should cancel a running run', async () => {
     runManager = new RunManager(store, {
       agentId: 'slow-agent',
-      execute: async (input: AgentInput, ctx: RunContext): Promise<AgentOutput> => {
+      execute: async (_input: AgentInput, ctx: RunContext): Promise<AgentOutput> => {
         await new Promise((resolve, reject) => {
           const timer = setTimeout(resolve, 5000)
           ctx.signal.addEventListener('abort', () => {

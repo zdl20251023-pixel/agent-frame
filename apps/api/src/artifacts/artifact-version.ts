@@ -1,6 +1,6 @@
 import type { ArtifactVersion } from '@agent-frame/shared'
 import type { ArtifactStore, CreateArtifactVersionInput } from './artifact-store.js'
-import { generateVersionId, now } from '../shared/utils/id.js'
+import { generateVersionId } from '../shared/utils/id.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
 

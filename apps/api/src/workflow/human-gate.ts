@@ -1,4 +1,4 @@
-import { WORKFLOW_STATUS, WORKFLOW_STAGE_STATUS } from '@agent-frame/shared'
+import { WORKFLOW_STATUS } from '@agent-frame/shared'
 import type { WorkflowStore } from './workflow-store.js'
 import { now } from '../shared/utils/id.js'
 import { logger } from '../shared/observability/logger.js'

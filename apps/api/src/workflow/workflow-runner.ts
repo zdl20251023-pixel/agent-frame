@@ -55,7 +55,7 @@ export class WorkflowRunner {
     log.info('[WorkflowRunner] WorkflowRun created', { workflowRunId: workflowRun.id })
 
     // 异步执行，不阻塞
-    this.executeWorkflow(definition, workflowRun.id, context).catch((err) => {
+    this.executeWorkflow(definition, workflowRun.id, context).catch(() => {
       logger.error('[WorkflowRunner] Uncaught workflow error', {
         runId,
         workflowRunId: workflowRun.id,

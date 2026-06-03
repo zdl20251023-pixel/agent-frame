@@ -6,7 +6,12 @@ import { RunEventEmitter } from '../runtime/event-emitter.js'
 import { StepManager } from '../runtime/step-manager.js'
 import { A2APolicy } from './a2a-policy.js'
 import { A2ARouter } from './a2a-router.js'
-import { buildA2AStartedEvent, buildA2ACompletedEvent, buildA2AFailedEvent } from './a2a-events.js'
+import {
+  buildA2AStartedEvent,
+  buildA2ACompletedEvent,
+  buildA2AFailedEvent,
+  buildA2AQueuedEvent,
+} from './a2a-events.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
 import { generateId, generateRunId } from '../shared/utils/id.js'
@@ -196,22 +201,22 @@ export class A2AClient {
     })
 
     // ─── 5. 发出 agent.call.queued 事件 ─────────────────────────
-    await this.emitter.emit({
-      type: 'agent.call.queued',
-      runId,
-      fromAgentId: request.fromAgentId,
-      toAgentId: request.toAgentId,
-      taskId,
-      childRunId,
-      timestamp: Date.now(),
-    } as Parameters<typeof this.emitter.emit>[0])
+    await this.emitter.emit(
+      buildA2AQueuedEvent({
+        runId,
+        fromAgentId: request.fromAgentId,
+        toAgentId: request.toAgentId,
+        taskId,
+        childRunId,
+      }),
+    )
 
     log.info('[A2AClient] startAsync queued', { taskId, childRunId })
 
     return { taskId, childRunId }
   }
 
-  async *stream(_request: A2ARequest): AsyncIterable<AgentEvent> {
+  stream(_request: A2ARequest): AsyncIterable<AgentEvent> {
     throw new AppError('A2A_ASYNC_NOT_IMPLEMENTED', 'Stream A2A is reserved for future versions.', {
       statusCode: 501,
     })

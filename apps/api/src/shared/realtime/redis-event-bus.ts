@@ -157,5 +157,3 @@ export function getEventBus(): Promise<EventBusAdapter> {
 export function _resetEventBus(): void {
   _busPromise = null
 }
-
-export type { EventBusAdapter }

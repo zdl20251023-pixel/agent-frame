@@ -32,8 +32,8 @@ function StageProgress({ stages }: { stages: WorkflowStageRun[] }) {
           <div className="stage-step__dot" />
           {i < stages.length - 1 && <div className="stage-step__line" />}
           <div className="stage-step__info">
-            <span className="stage-step__id">{stage.stageId}</span>
-            {stage.agentId && <span className="stage-step__agent">{stage.agentId}</span>}
+            <span className="stage-step__id">{stage.stageName || stage.stageId}</span>
+            {stage.stepId && <span className="stage-step__agent">{stage.stepId}</span>}
           </div>
         </div>
       ))}
@@ -44,11 +44,14 @@ function StageProgress({ stages }: { stages: WorkflowStageRun[] }) {
 function WorkflowRunCard({
   run,
   onApprove,
+  approving,
 }: {
   run: WorkflowRun
   onApprove: (runId: string, stageId: string) => void
+  approving: boolean
 }) {
-  const waitingStage = run.stages.find((s) => s.status === 'waiting_human')
+  const waitingStage = run.stageResults.find((s) => s.stageId === run.waitingHumanStageId)
+    ?? run.stageResults.find((s) => s.status === 'waiting_human')
   const createdAt = new Date(run.createdAt).toLocaleString('zh-CN', { hour12: false })
 
   return (
@@ -67,7 +70,7 @@ function WorkflowRunCard({
       </div>
 
       {/* 阶段进度 */}
-      {run.stages.length > 0 && <StageProgress stages={run.stages} />}
+      {run.stageResults.length > 0 && <StageProgress stages={run.stageResults} />}
 
       {/* 等待人工审核时的操作按钮 */}
       {run.status === 'waiting_human' && waitingStage && (
@@ -77,9 +80,10 @@ function WorkflowRunCard({
           </p>
           <button
             className="btn btn--approve"
+            disabled={approving}
             onClick={() => onApprove(run.id, waitingStage.stageId)}
           >
-            ✓ 批准通过
+            {approving ? '审批中...' : '✓ 批准通过'}
           </button>
         </div>
       )}
@@ -154,7 +158,12 @@ export function WorkflowsPage() {
           </div>
           <div className="wf-runs-list">
             {[...byStatus.running, ...byStatus.waiting_human].map((run) => (
-              <WorkflowRunCard key={run.id} run={run} onApprove={handleApprove} />
+              <WorkflowRunCard
+                key={run.id}
+                run={run}
+                approving={approving === `${run.id}-${run.waitingHumanStageId ?? ''}`}
+                onApprove={handleApprove}
+              />
             ))}
           </div>
         </section>
@@ -166,7 +175,12 @@ export function WorkflowsPage() {
           <div className="wf-section__title">历史记录</div>
           <div className="wf-runs-list">
             {[...byStatus.completed, ...byStatus.failed].map((run) => (
-              <WorkflowRunCard key={run.id} run={run} onApprove={handleApprove} />
+              <WorkflowRunCard
+                key={run.id}
+                run={run}
+                approving={approving === `${run.id}-${run.waitingHumanStageId ?? ''}`}
+                onApprove={handleApprove}
+              />
             ))}
           </div>
         </section>

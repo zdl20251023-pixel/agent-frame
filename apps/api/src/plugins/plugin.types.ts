@@ -58,6 +58,8 @@ export type PluginContext = {
   registerTool: (tool: ToolDefinition) => void
   registerWorkflow: (workflow: WorkflowDefinition) => void
   registerArtifactType: (type: ArtifactTypeDefinition) => void
+  /** 带 pluginId 上下文的结构化日志 */
+  log: (level: 'debug' | 'info' | 'warn' | 'error', message: string) => void
 }
 
 /** 插件定义 */

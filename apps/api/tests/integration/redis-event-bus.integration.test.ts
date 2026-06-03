@@ -7,7 +7,7 @@ const mockPublish = mock(() => Promise.resolve(1))
 const mockSubscribe = mock(() => Promise.resolve())
 const mockUnsubscribe = mock(() => Promise.resolve())
 const mockConnect = mock(() => Promise.resolve())
-const mockOn = mock((event: string, callback: (...args: any[]) => void) => {})
+const mockOn = mock((_event: string, _callback: (...args: any[]) => void) => {})
 
 mock.module('ioredis', () => {
   return {

@@ -1,4 +1,4 @@
-import type { Step, CreateStepInput, UpdateStepInput } from '@agent-frame/shared'
+import type { Step, CreateStepInput } from '@agent-frame/shared'
 import { STEP_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './stores/run-store.js'
 import { generateStepId, now } from '../shared/utils/id.js'

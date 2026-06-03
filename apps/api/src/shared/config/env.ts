@@ -3,14 +3,6 @@
 // 启动时若缺少必要配置会提前报错，避免运行中才发现
 // ============================================================
 
-function requireEnv(key: string): string {
-  const value = process.env[key]
-  if (!value) {
-    throw new Error(`Missing required environment variable: ${key}`)
-  }
-  return value
-}
-
 function optionalEnv(key: string, defaultValue: string): string {
   return process.env[key] ?? defaultValue
 }

@@ -1,4 +1,4 @@
-import { eq, and, inArray } from 'drizzle-orm'
+import { eq, inArray } from 'drizzle-orm'
 import { agentTasks } from '../shared/db/schema.js'
 import { getDb } from '../shared/db/client.js'
 import { mysqlNow } from '../shared/utils/id.js'

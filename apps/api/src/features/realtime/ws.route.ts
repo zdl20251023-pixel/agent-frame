@@ -64,13 +64,4 @@ export const wsRoute = new Elysia({ prefix: '/ws' })
         logger.debug('[WsRoute] Connection closed', { connectionId })
       }
     },
-
-    error(ws, error) {
-      const connectionId = (ws.data as Record<string, unknown>).connectionId as string
-      logger.warn('[WsRoute] WebSocket error', {
-        connectionId,
-        errorCode: 'WS_ERROR',
-        error: error instanceof Error ? error.message : String(error),
-      })
-    },
   })

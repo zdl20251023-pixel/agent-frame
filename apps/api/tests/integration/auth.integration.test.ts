@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'bun:test'
+import { describe, it, expect } from 'bun:test'
 import { authService } from '../../src/features/auth/auth.service.js'
 import { env } from '../../src/shared/config/env.js'
 

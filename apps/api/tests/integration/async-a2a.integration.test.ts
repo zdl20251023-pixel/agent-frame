@@ -37,7 +37,7 @@ describe.skipIf(!hasDb)('Async A2A and Worker Integration Tests', () => {
     // Register test agents
     router.register({
       agentId: 'agent-a',
-      execute: async (input: AgentInput<any>) => ({ output: { ok: true } }),
+      execute: async (_input: AgentInput<any>) => ({ output: { ok: true } }),
     })
     router.register({
       agentId: 'agent-b',
@@ -58,7 +58,7 @@ describe.skipIf(!hasDb)('Async A2A and Worker Integration Tests', () => {
     for (const id of createdTaskIds) {
       try {
         await db.delete(agentTasks).where(eq(agentTasks.id, id))
-      } catch (err) {
+      } catch {
         // ignore cleanup errors
       }
     }

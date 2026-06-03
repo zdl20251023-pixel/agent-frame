@@ -1,4 +1,5 @@
-import type { AgentEvent, Run } from './run.js'
+import type { AgentEvent } from '../events/agent-event.js'
+import type { Run } from './run.js'
 
 // ============================================================
 // 聊天会话模型

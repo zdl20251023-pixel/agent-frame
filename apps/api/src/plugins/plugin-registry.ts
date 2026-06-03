@@ -106,7 +106,7 @@ export class PluginRegistry {
       if (hooks.onBeforeRunStart) {
         try {
           await hooks.onBeforeRunStart(runId, agentId)
-        } catch (err) {
+        } catch {
           logger.warn('[PluginRegistry] onBeforeRunStart hook failed', {
             pluginId,
             runId,
@@ -124,7 +124,7 @@ export class PluginRegistry {
       if (hooks.onAfterRunComplete) {
         try {
           await hooks.onAfterRunComplete(runId, agentId, status)
-        } catch (err) {
+        } catch {
           logger.warn('[PluginRegistry] onAfterRunComplete hook failed', {
             pluginId,
             runId,

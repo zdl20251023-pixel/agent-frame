@@ -31,7 +31,7 @@ export interface ModelClient {
    * 结构化对象生成。
    * 适合：生成 JSON 结构、Artifact 内容、Agent 配置。
    */
-  generateObject<T>(input: GenerateObjectInput<T>): Promise<T>
+  generateObject<T>(input: GenerateObjectInput): Promise<T>
 
   /**
    * Embedding 向量生成（预留，MVP 不强制实现）。

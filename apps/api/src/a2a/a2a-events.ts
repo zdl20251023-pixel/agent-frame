@@ -26,6 +26,14 @@ export type A2ACompletedEventInput = {
   latencyMs: number
 }
 
+export type A2AQueuedEventInput = {
+  runId: string
+  childRunId: string
+  taskId: string
+  fromAgentId: string
+  toAgentId: string
+}
+
 export type A2AFailedEventInput = {
   runId: string
   traceId: string
@@ -33,6 +41,18 @@ export type A2AFailedEventInput = {
   fromAgentId: string
   toAgentId: string
   error: { code: string; message: string }
+}
+
+export function buildA2AQueuedEvent(input: A2AQueuedEventInput) {
+  return {
+    type: EVENT_TYPES.AGENT_CALL_QUEUED,
+    runId: input.runId,
+    childRunId: input.childRunId,
+    taskId: input.taskId,
+    fromAgentId: input.fromAgentId,
+    toAgentId: input.toAgentId,
+    timestamp: now(),
+  } as const
 }
 
 export function buildA2AStartedEvent(input: A2AStartedEventInput) {

@@ -13,22 +13,25 @@ export type WorkflowRunStatus =
 
 export type WorkflowStageRun = {
   stageId: string
+  stageName: string
   status: WorkflowRunStatus
   startedAt?: string
   completedAt?: string
-  agentId?: string
-  artifactId?: string
-  error?: string
+  stepId?: string
+  output?: unknown
+  error?: { code: string; message: string }
+  retryCount: number
 }
 
 export type WorkflowRun = {
   id: string
+  runId: string
   workflowId: string
   status: WorkflowRunStatus
   currentStageId?: string
-  stages: WorkflowStageRun[]
-  input?: unknown
-  output?: unknown
+  stageResults: WorkflowStageRun[]
+  waitingHumanStageId?: string
+  error?: { code: string; message: string }
   createdAt: string
   updatedAt: string
 }
@@ -45,9 +48,9 @@ export async function startWorkflow(input: {
   workflowId: string
   input?: unknown
 }): Promise<{ workflowRunId: string }> {
-  return post('/workflows/start', input)
+  return post(`/workflows/${input.workflowId}/runs`, { input: input.input })
 }
 
 export async function approveHumanGate(workflowRunId: string, stageId: string): Promise<void> {
-  return post(`/workflows/${workflowRunId}/stages/${stageId}/approve`, {})
+  return post(`/workflows/runs/${workflowRunId}/stages/${stageId}/approve`, {})
 }

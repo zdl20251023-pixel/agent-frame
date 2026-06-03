@@ -40,7 +40,7 @@ export class MemoryPolicy {
     // 1. scope 限制
     if (RESTRICTED_SCOPES.includes(input.scope)) {
       throw new AppError(
-        'PERMISSION_DENIED',
+        'FORBIDDEN',
         `Writing to scope '${input.scope}' is not allowed via API`,
         { statusCode: 403 },
       )
@@ -49,7 +49,7 @@ export class MemoryPolicy {
     // 2. kind 白名单
     if (!ALLOWED_KINDS.has(input.kind)) {
       throw new AppError(
-        'VALIDATION_ERROR',
+        'BAD_REQUEST',
         `Memory kind '${input.kind}' is not allowed. Allowed kinds: ${[...ALLOWED_KINDS].join(', ')}`,
         { statusCode: 400 },
       )
@@ -60,7 +60,7 @@ export class MemoryPolicy {
       typeof input.content === 'string' ? input.content : JSON.stringify(input.content)
     if (contentStr.length > MAX_CONTENT_LENGTH) {
       throw new AppError(
-        'VALIDATION_ERROR',
+        'BAD_REQUEST',
         `Memory content exceeds max length of ${MAX_CONTENT_LENGTH} characters`,
         { statusCode: 400 },
       )
@@ -74,7 +74,7 @@ export class MemoryPolicy {
   assertCanDelete(scope: MemoryScope): void {
     if (RESTRICTED_SCOPES.includes(scope)) {
       throw new AppError(
-        'PERMISSION_DENIED',
+        'FORBIDDEN',
         `Deleting from scope '${scope}' is not allowed`,
         { statusCode: 403 },
       )
