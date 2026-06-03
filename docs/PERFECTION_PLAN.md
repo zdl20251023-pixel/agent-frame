@@ -3,7 +3,7 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 3 Project + Memory + Session（已完成）→ 进入阶段 4**
+> 当前阶段：**阶段 4 可观测性、安全与生产化（已完成）→ 进入阶段 5**
 
 ---
 
@@ -57,12 +57,12 @@
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
-| 4.1 | `shared/observability/tracing.ts` traceId 贯穿链路追踪 | P2 | ❌ | — |
-| 4.2 | `features/usage/` Token / 成本统计 API | P2 | ❌ | — |
-| 4.3 | `features/auth/` 完整 JWT 认证 | P2 | ❌ | — |
-| 4.4 | `shared/middlewares/rate-limit.middleware.ts` 请求限流 | P3 | ❌ | — |
-| 4.5 | `shared/realtime/ws.hub.ts` WebSocket 多 Run 订阅 | P2 | ❌ | — |
-| 4.6 | `shared/observability/metrics.ts` 指标采集 | P3 | ❌ | — |
+| 4.1 | `shared/observability/tracing.ts` traceId 贯穿链路追踪 | P2 | ✅ | 2026-06-03 |
+| 4.2 | `features/usage/` Token / 成本统计 API | P2 | ✅ | 2026-06-03 |
+| 4.3 | `features/auth/` 完整 JWT 认证 | P2 | ✅ | 2026-06-03 |
+| 4.4 | `shared/middlewares/rate-limit.middleware.ts` 请求限流 | P3 | ✅ | 2026-06-03 |
+| 4.5 | `shared/realtime/ws.hub.ts` WebSocket 多 Run 订阅 | P2 | ✅ | 2026-06-03 |
+| 4.6 | `shared/observability/metrics.ts` 指标采集 | P3 | ✅ | 2026-06-03 |
 
 ### 阶段 5 — Plugin 扩展（P3）
 

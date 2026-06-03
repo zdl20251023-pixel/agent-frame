@@ -64,6 +64,23 @@ export class AuthRepository {
     return user
   }
 
+  async updateUser(
+    id: string,
+    updates: { username?: string; passwordHash?: string },
+  ): Promise<boolean> {
+    const db = this.db
+    const ts = new Date()
+    const pad = (n: number, len = 2) => String(n).padStart(len, '0')
+    const updatedAt = `${ts.getFullYear()}-${pad(ts.getMonth() + 1)}-${pad(ts.getDate())} ` +
+      `${pad(ts.getHours())}:${pad(ts.getMinutes())}:${pad(ts.getSeconds())}.${pad(ts.getMilliseconds(), 3)}`
+
+    await db
+      .update(users)
+      .set({ ...updates, updatedAt })
+      .where(eq(users.id, id))
+    return true
+  }
+
   private mapUserRow(row: typeof users.$inferSelect): User & { passwordHash: string } {
     return {
       id: row.id,

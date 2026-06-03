@@ -8,9 +8,14 @@ import { sessionsRoute } from './features/sessions/sessions.route.js'
 import { workflowsRoute } from './features/workflows/workflows.route.js'
 import { projectsRoute } from './features/projects/projects.route.js'
 import { memoryRoute } from './features/memory/memory.route.js'
+import { usageRoute } from './features/usage/usage.route.js'
+import { wsRoute } from './features/realtime/ws.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
+import { tracingPlugin } from './shared/observability/tracing.js'
+import { rateLimitPlugin } from './shared/middlewares/rate-limit.middleware.js'
+import { getMetricsSnapshot } from './shared/observability/metrics.js'
 
 // ============================================================
 // Elysia 应用创建和中间件注册
@@ -50,6 +55,10 @@ export function createApp() {
         allowedHeaders: ['Content-Type', 'Authorization'],
       }),
     )
+    // 链路追踪：为每个请求生成/注入 traceId（FRAMEWORK_DESIGN §0.7）
+    .use(tracingPlugin)
+    // 请求限流：IP 级别滑动窗口（FRAMEWORK_DESIGN §0.5 防止滥用）
+    .use(rateLimitPlugin)
     // 请求日志中间件
     .onRequest(({ request }) => {
       logger.info('[HTTP] Request', {
@@ -93,6 +102,8 @@ export function createApp() {
       ts: new Date().toISOString(),
       version: '0.1.0',
     }))
+    // 指标端点（只在内网或监控使用）
+    .get('/metrics', () => getMetricsSnapshot())
     // 功能路由
     .use(authRoute)
     .use(sessionsRoute)
@@ -102,6 +113,8 @@ export function createApp() {
     .use(workflowsRoute)
     .use(projectsRoute)
     .use(memoryRoute)
+    .use(usageRoute)
+    .use(wsRoute)
 
   return app
 }

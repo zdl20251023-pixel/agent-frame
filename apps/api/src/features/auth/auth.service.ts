@@ -68,6 +68,53 @@ export class AuthService {
     return user
   }
 
+  /**
+   * 刷新 accessToken：验证旧 token 仍有效，重新签发新 token
+   * MVP 阶段无 refresh_tokens 表，使用无状态验证
+   */
+  async refreshToken(accessToken: string): Promise<AuthResponse> {
+    const { verifyAccessToken } = await import('../../shared/auth/jwt.js')
+    let payload: Awaited<ReturnType<typeof verifyAccessToken>>
+    try {
+      payload = await verifyAccessToken(accessToken)
+    } catch {
+      throw new AppError('UNAUTHORIZED', 'Token is invalid or expired')
+    }
+    const user = await this.repo.findById(payload.sub)
+    if (!user) throw new AppError('UNAUTHORIZED', 'User not found')
+    return this.buildAuthResponse(user)
+  }
+
+  /** 更新用户资料（username 等可变字段）*/
+  async updateProfile(userId: string, updates: { username?: string }): Promise<PublicUser> {
+    if (!updates.username) throw new AppError('BAD_REQUEST', 'Nothing to update')
+    const username = updates.username.trim()
+    if (!username) throw new AppError('BAD_REQUEST', 'Username cannot be empty')
+    await this.repo.updateUser(userId, { username })
+    const user = await this.repo.findPublicUserById(userId)
+    if (!user) throw new AppError('INTERNAL_ERROR', 'User not found after update')
+    return user
+  }
+
+  /** 修改密码：校验当前密码，加密后更新 */
+  async changePassword(
+    userId: string,
+    input: { currentPassword: string; newPassword: string },
+  ): Promise<void> {
+    const user = await this.repo.findById(userId)
+    if (!user) throw new AppError('UNAUTHORIZED', 'Unauthorized')
+
+    const valid = await Bun.password.verify(input.currentPassword, user.passwordHash)
+    if (!valid) throw new AppError('UNAUTHORIZED', 'Current password is incorrect')
+
+    if (input.newPassword.length < 6) {
+      throw new AppError('BAD_REQUEST', 'New password must be at least 6 characters')
+    }
+
+    const newHash = await Bun.password.hash(input.newPassword, { algorithm: 'bcrypt', cost: 10 })
+    await this.repo.updateUser(userId, { passwordHash: newHash })
+  }
+
   private async buildAuthResponse(user: {
     id: string
     email: string
