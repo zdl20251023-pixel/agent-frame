@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@agent-frame/shared'
-import { eventBus } from '../shared/realtime/event-bus.js'
+import { getEventBus } from '../shared/realtime/redis-event-bus.js'
 import type { RunStore } from './stores/run-store.js'
 import { logger } from '../shared/observability/logger.js'
 import { env } from '../shared/config/env.js'
@@ -24,7 +24,8 @@ export class RunEventEmitter {
     }
 
     // 2. 再广播给 SSE 订阅者
-    eventBus.emit(event)
+    const bus = await getEventBus()
+    bus.emit(event)
 
     if (event.type === 'message.delta' && !env.LOG_EVENT_DELTA) return
 

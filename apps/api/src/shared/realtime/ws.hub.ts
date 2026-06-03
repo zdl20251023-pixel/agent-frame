@@ -1,5 +1,5 @@
 import type { AgentEvent } from '@agent-frame/shared'
-import { eventBus } from './event-bus.js'
+import { getEventBus } from './redis-event-bus.js'
 import { logger } from '../observability/logger.js'
 import { metrics } from '../observability/metrics.js'
 
@@ -96,20 +96,30 @@ class WebSocketHub {
   }
 
   /** 订阅一个 runId 的事件 */
-  subscribe(connectionId: string, runId: string): void {
+  async subscribe(connectionId: string, runId: string): Promise<void> {
     const conn = this.connections.get(connectionId)
     if (!conn) return
     if (conn.subscribedRunIds.has(runId)) return // 已订阅，幂等
 
-    const unsub = eventBus.subscribe(runId, (event) => {
-      this.pushEvent(connectionId, runId, event)
-    })
-
     conn.subscribedRunIds.add(runId)
-    conn.unsubscribeFns.set(runId, unsub)
 
-    this.sendToConnection(conn, { type: 'subscribed', runId })
-    logger.debug('[WsHub] Subscribed', { connectionId, runId })
+    try {
+      const bus = await getEventBus()
+      // 再次检查连接是否存在（可能在 await 期间连接断开了）
+      const activeConn = this.connections.get(connectionId)
+      if (!activeConn) return
+
+      const unsub = bus.subscribe(runId, (event) => {
+        this.pushEvent(connectionId, runId, event)
+      })
+
+      activeConn.unsubscribeFns.set(runId, unsub)
+      this.sendToConnection(activeConn, { type: 'subscribed', runId })
+      logger.debug('[WsHub] Subscribed', { connectionId, runId })
+    } catch (err: any) {
+      conn.subscribedRunIds.delete(runId)
+      this.sendToConnection(conn, { type: 'error', message: `Subscription failed: ${err.message}` })
+    }
   }
 
   /** 取消订阅一个 runId */

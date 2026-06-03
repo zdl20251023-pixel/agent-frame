@@ -1,5 +1,5 @@
 import { Elysia } from 'elysia'
-import { generateTraceId } from '../../utils/id.js'
+import { generateTraceId } from '../utils/id.js'
 import { logger } from './logger.js'
 
 // ============================================================

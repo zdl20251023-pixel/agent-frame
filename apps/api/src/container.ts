@@ -34,6 +34,7 @@ import { MySQLMemoryStore } from './memory/memory-store.mysql.js'
 import { MemoryMemoryStore } from './memory/memory-store.memory.js'
 import { MemoryRetriever } from './memory/memory-retriever.js'
 import type { MemoryStore } from './memory/memory.types.js'
+import { AgentTaskWorker } from './queues/agent-task.worker.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -59,6 +60,7 @@ export type AppContainer = {
   projectsService: ProjectsService
   memoryStore: MemoryStore
   memoryRetriever: MemoryRetriever
+  agentTaskWorker: AgentTaskWorker
 }
 
 function createStore(): RunStore {
@@ -134,6 +136,15 @@ export function createContainer(): AppContainer {
     : new MemoryMemoryStore()
   const memoryRetriever = new MemoryRetriever(memoryStore)
 
+  // ─── AgentTask Worker（异步 A2A 任务消费者）────────────────
+  const agentTaskWorker = new AgentTaskWorker(store, a2aRouter, {
+    pollIntervalMs: 2000,
+    batchSize: 2,
+    // 只有 MySQL 模式下才启动 Worker（内存模式无持久化）
+    enabled: !!env.DATABASE_URL,
+  })
+  agentTaskWorker.start()
+
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
@@ -156,6 +167,7 @@ export function createContainer(): AppContainer {
     projectsService,
     memoryStore,
     memoryRetriever,
+    agentTaskWorker,
   }
 }
 

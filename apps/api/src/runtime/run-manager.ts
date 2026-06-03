@@ -7,6 +7,7 @@ import { generateRunId, generateTraceId, now } from '../shared/utils/id.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
 import { env } from '../shared/config/env.js'
+import { runScheduler } from './scheduler.js'
 
 // ============================================================
 // RunContext — 单次 Run 的执行上下文
@@ -57,11 +58,7 @@ export class RunManager {
     const runId = generateRunId()
     const traceId = generateTraceId()
 
-    // 并发控制
-    if (this.activeContexts.size >= env.MAX_CONCURRENT_RUNS) {
-      throw new AppError('RATE_LIMIT', 'Too many concurrent runs', { statusCode: 429 })
-    }
-
+    // 队列满了时快速失败（Scheduler 会在 maxQueueSize 超出时 reject）
     const run = await this.store.createRun({
       id: runId,
       traceId,
@@ -81,10 +78,22 @@ export class RunManager {
     // 发出 run.started 事件
     await this.emitter.emit({ type: EVENT_TYPES.RUN_STARTED, runId, agentId: options.agentId, timestamp: now() })
 
-    // 异步执行（不阻塞创建请求）
-    this.executeRun(run, context, options).catch((err) => {
-      logger.error('[RunManager] Uncaught run error', { runId, traceId, errorCode: 'INTERNAL_ERROR' })
-    })
+    // 通过 Scheduler 执行（优先级队列 + 并发控制）
+    runScheduler
+      .schedule(() => this.executeRun(run, context, options), {
+        id: runId,
+        priority: 5,
+        waitTimeoutMs: env.RUN_TIMEOUT_MS,
+      })
+      .catch((err) => {
+        logger.error('[RunManager] Scheduler rejected run', {
+          runId,
+          traceId,
+          errorCode: err instanceof Error ? err.message : 'SCHEDULER_ERROR',
+        })
+        // 调度器超时 → 直接标记 Run 失败
+        this.store.updateRunStatus(runId, RUN_STATUS.FAILED).catch(() => {})
+      })
 
     return run
   }

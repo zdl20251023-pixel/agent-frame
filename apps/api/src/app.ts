@@ -18,6 +18,7 @@ import { rateLimitPlugin } from './shared/middlewares/rate-limit.middleware.js'
 import { getMetricsSnapshot } from './shared/observability/metrics.js'
 import { pluginsRoute } from './features/plugins/plugins.route.js'
 import { registerBuiltinPlugins } from './plugins/builtin-plugins.js'
+import { runScheduler } from './runtime/scheduler.js'
 
 // ============================================================
 // Elysia 应用创建和中间件注册
@@ -105,6 +106,7 @@ export function createApp() {
       ok: true,
       ts: new Date().toISOString(),
       version: '0.1.0',
+      scheduler: runScheduler.getStats(),
     }))
     // 指标端点（只在内网或监控使用）
     .get('/metrics', () => getMetricsSnapshot())

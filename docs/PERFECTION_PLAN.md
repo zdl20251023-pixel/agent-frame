@@ -3,7 +3,7 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 5 Plugin 扩展（已完成）→ 进入阶段 6**
+> 当前阶段：**阶段 6 生产化与规模化（已完成）**
 
 ---
 
@@ -77,11 +77,11 @@
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
-| 6.1 | Redis EventBus（替换内存 EventBus，支持多实例）| P3 | ❌ | — |
-| 6.2 | A2A 异步模式 `startAsync()` + Worker | P3 | ❌ | — |
-| 6.3 | `runtime/scheduler.ts` 并发控制 + 优先级队列 | P3 | ❌ | — |
-| 6.4 | E2E 测试 + GitHub Actions CI/CD | P3 | ❌ | — |
-| 6.5 | Docker 部署支持 | P3 | ❌ | — |
+| 6.1 | Redis EventBus（替换内存 EventBus，支持多实例）| P3 | ✅ | 2026-06-03 |
+| 6.2 | A2A 异步模式 `startAsync()` + Worker | P3 | ✅ | 2026-06-03 |
+| 6.3 | `runtime/scheduler.ts` 并发控制 + 优先级队列 | P3 | ✅ | 2026-06-03 |
+| 6.4 | E2E 测试 + GitHub Actions CI/CD | P3 | ✅ | 2026-06-03 |
+| 6.5 | Docker 部署支持 | P3 | ✅ | 2026-06-03 |
 
 ---
 

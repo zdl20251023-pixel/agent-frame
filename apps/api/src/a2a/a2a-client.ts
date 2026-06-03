@@ -9,6 +9,8 @@ import { A2ARouter } from './a2a-router.js'
 import { buildA2AStartedEvent, buildA2ACompletedEvent, buildA2AFailedEvent } from './a2a-events.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
+import { generateId, generateRunId } from '../shared/utils/id.js'
+import { agentTaskStore } from '../queues/agent-task.store.js'
 
 // ============================================================
 // A2AClient — Agent 调用 Agent 的唯一入口
@@ -158,10 +160,55 @@ export class A2AClient {
     }
   }
 
-  async startAsync(_request: A2ARequest): Promise<never> {
-    throw new AppError('A2A_ASYNC_NOT_IMPLEMENTED', 'Async A2A is reserved for future versions.', {
-      statusCode: 501,
+  async startAsync(
+    request: A2ARequest,
+    context: RunContext,
+  ): Promise<{ taskId: string; childRunId: string }> {
+    const { runId, traceId } = request
+    const log = logger.child({
+      runId,
+      traceId,
+      fromAgentId: request.fromAgentId,
+      toAgentId: request.toAgentId,
     })
+
+    // ─── 1. Policy 检查 ────────────────────────────────────────
+    this.policy.assertCanCall(request, context)
+
+    // ─── 2. 生成 taskId / childRunId ──────────────────────────
+    const taskId = generateId('task')
+    const childRunId = generateRunId()
+
+    // ─── 3. 幂等键（基于 runId + fromAgent + toAgent + input hash）──
+    const idempotencyKey = [runId, request.fromAgentId, request.toAgentId, taskId].join(':')
+
+    // ─── 4. 创建 AgentTask 记录 ────────────────────────────────
+    await agentTaskStore.create({
+      id: taskId,
+      parentRunId: runId,
+      childRunId,
+      fromAgentId: request.fromAgentId,
+      toAgentId: request.toAgentId,
+      input: request.input,
+      idempotencyKey,
+      maxRetries: 3,
+      priority: 5,
+    })
+
+    // ─── 5. 发出 agent.call.queued 事件 ─────────────────────────
+    await this.emitter.emit({
+      type: 'agent.call.queued',
+      runId,
+      fromAgentId: request.fromAgentId,
+      toAgentId: request.toAgentId,
+      taskId,
+      childRunId,
+      timestamp: Date.now(),
+    } as Parameters<typeof this.emitter.emit>[0])
+
+    log.info('[A2AClient] startAsync queued', { taskId, childRunId })
+
+    return { taskId, childRunId }
   }
 
   async *stream(_request: A2ARequest): AsyncIterable<AgentEvent> {

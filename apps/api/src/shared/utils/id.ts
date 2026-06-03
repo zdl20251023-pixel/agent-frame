@@ -5,8 +5,9 @@ import { ulid } from 'ulid'
 // 使用 ULID：时间有序 + 全局唯一，适合 MySQL 主键
 // ============================================================
 
-export function generateId(): string {
-  return ulid().toLowerCase()
+export function generateId(prefix?: string): string {
+  const id = ulid().toLowerCase()
+  return prefix ? `${prefix}-${id}` : id
 }
 
 export function generateTraceId(): string {
@@ -39,4 +40,9 @@ export function generateVersionId(): string {
 
 export function now(): string {
   return new Date().toISOString()
+}
+
+/** MySQL datetime(3) compatible timestamp: 'YYYY-MM-DD HH:MM:SS.mmm' */
+export function mysqlNow(): string {
+  return new Date().toISOString().replace('T', ' ').replace('Z', '').slice(0, 23)
 }

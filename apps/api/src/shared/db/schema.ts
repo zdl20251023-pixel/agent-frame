@@ -225,6 +225,40 @@ export const memories = mysqlTable(
   ],
 )
 
+// ─── agent_tasks 表 ──────────────────────────────────────────
+// 对应 FRAMEWORK_DESIGN §40.11 异步 A2A 的 MySQL 状态表
+// AgentTask 表示一个异步 Agent 调用任务（不替代 Run，是 Run 的异步执行句柄）
+export const agentTasks = mysqlTable(
+  'agent_tasks',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    parentRunId: varchar('parent_run_id', { length: 36 }).notNull(),
+    childRunId: varchar('child_run_id', { length: 36 }).notNull(),
+    fromAgentId: varchar('from_agent_id', { length: 100 }).notNull(),
+    toAgentId: varchar('to_agent_id', { length: 100 }).notNull(),
+    // queued | running | completed | failed | cancelled
+    status: varchar('status', { length: 20 }).notNull().default('queued'),
+    input: json('input').notNull(),
+    output: json('output'),
+    error: json('error'),
+    // 幂等键，避免重复入队（FRAMEWORK_DESIGN: 建议唯一索引）
+    idempotencyKey: varchar('idempotency_key', { length: 100 }),
+    retryCount: int('retry_count').notNull().default(0),
+    maxRetries: int('max_retries').notNull().default(3),
+    priority: int('priority').notNull().default(5),   // 1=最高, 10=最低
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    startedAt: datetime('started_at', { mode: 'string', fsp: 3 }),
+    completedAt: datetime('completed_at', { mode: 'string', fsp: 3 }),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_agent_tasks_parent_run_id').on(table.parentRunId),
+    index('idx_agent_tasks_child_run_id').on(table.childRunId),
+    index('idx_agent_tasks_status').on(table.status),
+    uniqueIndex('uq_agent_tasks_idempotency').on(table.idempotencyKey),
+  ],
+)
+
 export type Schema = {
   users: typeof users
   chatSessions: typeof chatSessions
@@ -236,4 +270,5 @@ export type Schema = {
   artifactVersions: typeof artifactVersions
   modelCallLogs: typeof modelCallLogs
   memories: typeof memories
+  agentTasks: typeof agentTasks
 }

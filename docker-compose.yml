@@ -1,0 +1,105 @@
+# ============================================================
+# docker-compose.yml — Agent Frame 本地开发完整环境
+#
+# 启动：docker compose up -d
+# 停止：docker compose down
+# 完全清理：docker compose down -v
+# ============================================================
+
+version: '3.9'
+
+services:
+  # ─── MySQL ────────────────────────────────────────────────────
+  mysql:
+    image: mysql:8.0
+    container_name: agent-frame-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: agent_frame
+      MYSQL_USER: agentframe
+      MYSQL_PASSWORD: agentframe123
+    ports:
+      - '3307:3306'
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', 'localhost', '-u', 'root', '-ppassword']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  # ─── Redis（EventBus 多实例广播 + 后续队列支持）────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: agent-frame-redis
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ─── API（agent-frame-api）────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: agent-frame-api
+    ports:
+      - '3099:3099'
+    environment:
+      NODE_ENV: production
+      PORT: 3099
+      DATABASE_URL: mysql://agentframe:agentframe123@mysql:3306/agent_frame
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-change-me-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      MAX_CONCURRENT_RUNS: ${MAX_CONCURRENT_RUNS:-10}
+      RUN_TIMEOUT_MS: ${RUN_TIMEOUT_MS:-120000}
+      MAX_AGENT_CALLS_PER_RUN: ${MAX_AGENT_CALLS_PER_RUN:-8}
+      MAX_A2A_DEPTH: ${MAX_A2A_DEPTH:-3}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      # AI Model Keys — 从 .env 文件或环境变量注入
+      GOOGLE_GENERATIVE_AI_API_KEY: ${GOOGLE_GENERATIVE_AI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://localhost:3099/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
+  # ─── Web（agent-frame-web）───────────────────────────────────
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: agent-frame-web
+    ports:
+      - '3000:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
+    driver: local
+  redis_data:
+    driver: local

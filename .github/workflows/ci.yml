@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# 同一 branch/PR 新 push 时取消旧的运行
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─── 1. 代码质量检查 ──────────────────────────────────────────
+  lint:
+    name: Type Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: TypeScript type check (API)
+        run: bun run tsc --noEmit
+        working-directory: apps/api
+
+      - name: TypeScript type check (Web)
+        run: bun run tsc --noEmit
+        working-directory: apps/web
+
+  # ─── 2. 单元 + 集成测试 ──────────────────────────────────────
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run API tests (unit + integration)
+        run: bun test --timeout 30000
+        working-directory: apps/api
+        env:
+          # 使用内存 Store，无需 MySQL
+          DATABASE_URL: ''
+          # 使用内存 EventBus，无需 Redis
+          REDIS_URL: ''
+          # 测试用假 Key（AI 模型不会真正调用）
+          GOOGLE_GENERATIVE_AI_API_KEY: test-key-ci
+          JWT_SECRET: ci-test-secret
+          MAX_CONCURRENT_RUNS: '5'
+          RUN_TIMEOUT_MS: '30000'
+
+  # ─── 3. 构建验证 ──────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build Web
+        run: bun run build
+        working-directory: apps/web
+
+      - name: Check API can compile (tsc)
+        run: bun run tsc --noEmit
+        working-directory: apps/api
+
+  # ─── 4. Docker 构建验证（只在 main branch）─────────────────
+  docker-build:
+    name: Docker Build
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build API Docker image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/api/Dockerfile
+          push: false
+          tags: agent-frame-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build Web Docker image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          push: false
+          tags: agent-frame-web:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
