@@ -36,6 +36,8 @@ export type AgentCapability = {
 
 
 
+import type { ConversationContext } from './conversation-context.js'
+
 // 统一 Agent 执行输入
 export type AgentInput<T = unknown> = {
   runId: string
@@ -45,6 +47,8 @@ export type AgentInput<T = unknown> = {
   projectId?: string
   sessionId?: string
   payload: T                     // 当前 Agent 的直接输入
+  /** 预算内会话历史（由后端 ConversationContextBuilder 构建） */
+  conversationContext?: ConversationContext
   artifacts?: ArtifactRef[]      // 上游产物引用
   context?: ContextRef           // 上下文加载策略
   signal?: AbortSignal           // 取消信号

@@ -94,6 +94,56 @@ export class SessionsRepository {
       )
   }
 
+  /**
+   * 读取会话滚动摘要（存于 metadata.conversationSummary）。
+   */
+  async getConversationSummary(sessionId: string): Promise<string | undefined> {
+    try {
+      const rows = await this.db
+        .select({ metadata: chatSessions.metadata })
+        .from(chatSessions)
+        .where(eq(chatSessions.id, sessionId))
+        .limit(1)
+      if (rows.length === 0 || !rows[0].metadata) return undefined
+      const meta = rows[0].metadata as Record<string, unknown>
+      const summary = meta.conversationSummary
+      return typeof summary === 'string' && summary.trim() ? summary : undefined
+    } catch {
+      // 旧库未迁移 metadata 列时降级，不阻塞 Run 创建
+      return undefined
+    }
+  }
+
+  /**
+   * 更新会话滚动摘要到 metadata。
+   */
+  async updateConversationSummary(sessionId: string, summary: string): Promise<void> {
+    try {
+      const rows = await this.db
+        .select({ metadata: chatSessions.metadata })
+        .from(chatSessions)
+        .where(eq(chatSessions.id, sessionId))
+        .limit(1)
+      const existing =
+        rows.length > 0 && rows[0].metadata && typeof rows[0].metadata === 'object'
+          ? (rows[0].metadata as Record<string, unknown>)
+          : {}
+      await this.db
+        .update(chatSessions)
+        .set({
+          metadata: {
+            ...existing,
+            conversationSummary: summary,
+            summaryUpdatedAt: mysqlNow(),
+          },
+          updatedAt: mysqlNow(),
+        })
+        .where(eq(chatSessions.id, sessionId))
+    } catch {
+      // metadata 列不存在时跳过摘要持久化
+    }
+  }
+
   private mapSession(row: {
     id: string
     userId: string

@@ -1,8 +1,10 @@
 import type { Run } from '@agent-frame/shared'
+import type { ConversationContext } from '@agent-frame/shared'
 import type { RunManager } from '../../runtime/run-manager.js'
 import type { RunStore } from '../../runtime/stores/run-store.js'
 import type { ArtifactStore } from '../../artifacts/artifact-store.js'
 import type { SessionsService } from '../sessions/sessions.service.js'
+import type { ConversationContextBuilder } from '../sessions/conversation-context.builder.js'
 import { AppError } from '../../shared/errors/app-error.js'
 
 // ============================================================
@@ -32,6 +34,7 @@ export class RunsService {
     private store: RunStore,
     private artifactStore: ArtifactStore,
     private sessionsService: SessionsService,
+    private conversationContextBuilder: ConversationContextBuilder,
   ) {}
 
   async createRun(params: CreateRunParams): Promise<CreateRunResult> {
@@ -40,16 +43,31 @@ export class RunsService {
     // 1. 解析或创建 Session
     const sessionId = await this.sessionsService.resolveSessionId(userId, params.sessionId)
 
-    // 2. 创建 Run
+    // 2. 构建预算内会话上下文（不含当前 Run，仅历史）
+    const currentMessage = this.extractMessage(input)
+    let conversationContext: ConversationContext | undefined
+    try {
+      conversationContext = await this.conversationContextBuilder.build({
+        sessionId,
+        userId,
+        currentMessage,
+      })
+    } catch {
+      // 上下文构建失败不阻塞 Run，降级为无历史
+      conversationContext = undefined
+    }
+
+    // 3. 创建 Run
     const run = await this.runManager.createRun({
       input,
       agentId: params.agentId,
       userId,
       projectId: params.projectId,
       sessionId,
+      conversationContext,
     })
 
-    // 3. 更新 Session 活跃时间和标题
+    // 4. 更新 Session 活跃时间和标题
     await this.sessionsService.touchSession(sessionId)
     const message = this.extractMessage(input)
     if (message) {

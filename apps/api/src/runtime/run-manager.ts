@@ -1,4 +1,4 @@
-import type { Run, AgentInput, AgentOutput } from '@agent-frame/shared'
+import type { Run, AgentInput, AgentOutput, ConversationContext } from '@agent-frame/shared'
 import { EVENT_TYPES, RUN_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './stores/run-store.js'
 import { RunEventEmitter } from './event-emitter.js'
@@ -8,6 +8,8 @@ import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
 import { env } from '../shared/config/env.js'
 import { runScheduler } from './scheduler.js'
+import type { SessionSummaryService } from '../features/sessions/session-summary.service.js'
+import { extractUserMessage, buildAssistantText } from '../features/sessions/conversation-context.utils.js'
 
 // ============================================================
 // RunContext — 单次 Run 的执行上下文
@@ -16,6 +18,7 @@ export type RunContext = {
   runId: string
   traceId: string
   userId?: string
+  sessionId?: string
   signal: AbortSignal
   depth: number        // 当前 A2A 调用深度
   callCount: number    // 当前 Run 总 A2A 调用次数
@@ -32,6 +35,7 @@ export type CreateRunOptions = {
   userId?: string
   projectId?: string
   sessionId?: string
+  conversationContext?: ConversationContext
 }
 
 export type AgentExecutor = {
@@ -46,6 +50,7 @@ export class RunManager {
   constructor(
     private store: RunStore,
     private executor?: AgentExecutor,
+    private sessionSummaryService?: SessionSummaryService,
   ) {
     this.emitter = new RunEventEmitter(store)
   }
@@ -70,7 +75,16 @@ export class RunManager {
     })
 
     const signal = cancellationManager.create(runId)
-    const context: RunContext = { runId, traceId, userId: options.userId, signal, depth: 0, callCount: 0, totalCostUsd: 0 }
+    const context: RunContext = {
+      runId,
+      traceId,
+      userId: options.userId,
+      sessionId: options.sessionId,
+      signal,
+      depth: 0,
+      callCount: 0,
+      totalCostUsd: 0,
+    }
     this.activeContexts.set(runId, context)
 
     logger.info('[RunManager] Run created', { runId, traceId, agentId: options.agentId })
@@ -119,6 +133,7 @@ export class RunManager {
         userId: options.userId,
         projectId: options.projectId,
         sessionId: options.sessionId,
+        conversationContext: options.conversationContext,
         payload: options.input,
         signal: context.signal,
       }
@@ -127,6 +142,8 @@ export class RunManager {
 
       await this.store.updateRunStatus(runId, RUN_STATUS.COMPLETED, { output: result.output })
       await this.emitter.emit({ type: EVENT_TYPES.RUN_COMPLETED, runId, agentId: this.executor.agentId, timestamp: now() })
+
+      this.scheduleSessionSummaryUpdate(options, result.output)
 
       logger.info('[RunManager] Run completed', { runId, traceId })
     } catch (err: unknown) {
@@ -178,5 +195,29 @@ export class RunManager {
 
   getEmitter(): RunEventEmitter {
     return this.emitter
+  }
+
+  /**
+   * Run 成功后异步更新会话滚动摘要。
+   */
+  private scheduleSessionSummaryUpdate(options: CreateRunOptions, output: unknown): void {
+    if (!this.sessionSummaryService || !options.sessionId || !options.userId) return
+
+    const userMessage = extractUserMessage(options.input)
+    let assistantText = ''
+    if (output && typeof output === 'object' && output !== null && 'answer' in output) {
+      assistantText = String((output as { answer?: unknown }).answer ?? '')
+    }
+    if (!assistantText && output) {
+      assistantText = buildAssistantText([], output)
+    }
+    if (!userMessage && !assistantText) return
+
+    this.sessionSummaryService.scheduleUpdate({
+      sessionId: options.sessionId,
+      userId: options.userId,
+      userMessage,
+      assistantText,
+    })
   }
 }

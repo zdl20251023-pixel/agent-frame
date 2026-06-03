@@ -7,15 +7,24 @@ import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { sessionsService } from '../sessions/sessions.service.js'
 import { RunsService } from './runs.service.js'
 import { RUN_STATUS } from '@agent-frame/shared'
+import { ConversationContextBuilder } from '../sessions/conversation-context.builder.js'
+import { SessionsRepository } from '../sessions/sessions.repository.js'
 
 // ─── 初始化 Service 层 ────────────────────────────────────────
 sessionsService.setRunStore(container.store)
+
+const conversationContextBuilder = new ConversationContextBuilder(
+  container.store,
+  container.artifactStore,
+  new SessionsRepository(),
+)
 
 const runsService = new RunsService(
   container.runManager,
   container.store,
   container.artifactStore,
   sessionsService,
+  conversationContextBuilder,
 )
 
 // ============================================================
@@ -64,9 +73,10 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
           set.status = err.statusCode
           return err.toJSON()
         }
-        logger.error('[runs.route] POST /runs failed', { errorCode: 'INTERNAL_ERROR' })
+        const detail = err instanceof Error ? err.message : String(err)
+        logger.error('[runs.route] POST /runs failed', { errorCode: 'INTERNAL_ERROR', message: detail })
         set.status = 500
-        return { code: 'INTERNAL_ERROR', message: 'Internal server error' }
+        return { code: 'INTERNAL_ERROR', message: detail }
       }
     },
     {

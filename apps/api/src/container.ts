@@ -35,6 +35,8 @@ import { MemoryMemoryStore } from './memory/memory-store.memory.js'
 import { MemoryRetriever } from './memory/memory-retriever.js'
 import type { MemoryStore } from './memory/memory.types.js'
 import { AgentTaskWorker } from './queues/agent-task.worker.js'
+import { SessionsRepository } from './features/sessions/sessions.repository.js'
+import { SessionSummaryService } from './features/sessions/session-summary.service.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -115,11 +117,15 @@ export function createContainer(): AppContainer {
   // ─── SupervisorAgent ─────────────────────────────────────
   const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store, memoryRetriever, memoryStore)
 
+  // ─── 会话摘要服务 ─────────────────────────────────────────
+  const sessionsRepository = new SessionsRepository()
+  const sessionSummaryService = new SessionSummaryService(sessionsRepository, modelClient)
+
   // ─── RunManager ──────────────────────────────────────────
   const runManager = new RunManager(store, {
     agentId: SUPERVISOR_AGENT_ID,
     execute: (input, ctx) => supervisorAgent.execute(input as Parameters<typeof supervisorAgent.execute>[0], ctx),
-  })
+  }, sessionSummaryService)
 
   // ─── Workflow 层 ─────────────────────────────────────────
   const workflowStore = env.DATABASE_URL ? new MySQLWorkflowStore() : new MemoryWorkflowStore()

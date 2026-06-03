@@ -1,4 +1,4 @@
-import type { AgentInput, AgentOutput } from '@agent-frame/shared'
+import type { AgentInput, AgentOutput, ConversationContext } from '@agent-frame/shared'
 import { EVENT_TYPES, STEP_TYPES, MODEL_STREAM_EVENT_TYPES, A2A_STATUSES, A2A_CALL_MODES } from '@agent-frame/shared'
 import type { ModelClient } from '../model-client/model-client.js'
 import type { RunContext } from '../../runtime/run-manager.js'
@@ -58,11 +58,9 @@ export class SupervisorAgent {
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
     const memorySummary = await this.recallMemory(input, context, log)
-    const userPrompt = memorySummary
-      ? `${memorySummary}\n\n用户问题：${payload.message}`
-      : payload.message
+    const userPrompt = this.buildUserPrompt(payload.message, memorySummary, input.conversationContext)
 
-    log.info('[SupervisorAgent] Analyzing task', { message: payload.message })
+    log.info('[SupervisorAgent] Analyzing task', { message: payload.message, hasContext: Boolean(input.conversationContext?.promptText) })
 
     // ─── Step 1：创建 model_call Step，分析任务决定调用策略 ──
     const planStep = await this.stepManager.startStep({
@@ -191,17 +189,30 @@ export class SupervisorAgent {
     return { output: { answer } }
   }
 
+  private buildUserPrompt(
+    currentMessage: string,
+    memorySummary: string,
+    conversationContext?: ConversationContext,
+  ): string {
+    const parts: string[] = []
+    if (memorySummary) parts.push(memorySummary)
+    if (conversationContext?.promptText) parts.push(conversationContext.promptText)
+    parts.push(`用户问题：${currentMessage}`)
+    return parts.join('\n\n')
+  }
+
   private async recallMemory(
     input: AgentInput<SupervisorPayload>,
     context: RunContext,
     log: ReturnType<typeof logger.child>,
   ): Promise<string> {
     if (!this.memoryRetriever) return ''
+    const sessionId = input.sessionId ?? context.sessionId
     try {
       const result = await this.memoryRetriever.recall(
         {
           userId: context.userId,
-          sessionId: input.payload.sessionId,
+          sessionId,
           agentId: this.agentId,
         },
         ['preference', 'constraint', 'summary', 'instruction'],
@@ -225,6 +236,7 @@ export class SupervisorAgent {
   ): Promise<void> {
     if (!this.memoryStore || !context.userId || !answer.trim()) return
 
+    const sessionId = input.sessionId ?? context.sessionId
     const candidate = {
       scope: 'user' as const,
       scopeId: context.userId,
@@ -237,7 +249,7 @@ export class SupervisorAgent {
         source: 'supervisor-agent',
         reviewStatus: 'candidate',
         runId: context.runId,
-        sessionId: input.payload.sessionId,
+        sessionId,
       },
     }
 

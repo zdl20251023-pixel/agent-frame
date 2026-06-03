@@ -32,6 +32,7 @@ const DDL_STATEMENTS = [
     id          VARCHAR(36)  NOT NULL PRIMARY KEY,
     user_id     VARCHAR(36)  NOT NULL,
     title       VARCHAR(255) NULL,
+    metadata    JSON         NULL,
     deleted_at  DATETIME(3)  NULL,
     created_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     updated_at  DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
@@ -176,6 +177,20 @@ async function main() {
       await conn.execute(ddl)
       console.log('✓')
     }
+
+    // 兼容已有库：补 chat_sessions.metadata 列（会话滚动摘要）
+    try {
+      await conn.execute('ALTER TABLE chat_sessions ADD COLUMN metadata JSON NULL')
+      console.log('   Migrated: chat_sessions.metadata ✓')
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (msg.includes('Duplicate column')) {
+        console.log('   chat_sessions.metadata already exists ✓')
+      } else {
+        console.warn('   chat_sessions.metadata migration skipped:', msg)
+      }
+    }
+
     console.log(`\n✅ Database initialized successfully! (${DDL_STATEMENTS.length} tables)\n`)
   } finally {
     await conn.end()

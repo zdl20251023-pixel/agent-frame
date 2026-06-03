@@ -40,6 +40,7 @@ export const chatSessions = mysqlTable(
     id: varchar('id', { length: 36 }).primaryKey(),
     userId: varchar('user_id', { length: 36 }).notNull(),
     title: varchar('title', { length: 255 }),
+    metadata: json('metadata'),
     deletedAt: datetime('deleted_at', { mode: 'string', fsp: 3 }),
     createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
     updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
