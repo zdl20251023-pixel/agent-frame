@@ -16,6 +16,13 @@ import {
 } from './ai/agents/agent-ids.js'
 import { AgentsService } from './features/agents/agents.service.js'
 import { ArtifactsService } from './features/artifacts/artifacts.service.js'
+import { WorkflowRunner } from './workflow/workflow-runner.js'
+import { WorkflowRegistry } from './workflow/workflow-registry.js'
+import { MemoryWorkflowStore } from './workflow/workflow-store.js'
+import type { WorkflowStore } from './workflow/workflow-store.js'
+import { ArtifactVersionManager } from './artifacts/artifact-version.js'
+import { humanGate } from './workflow/human-gate.js'
+import type { HumanGateManager } from './workflow/human-gate.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
 import type { RunStore } from './runtime/stores/run-store.js'
@@ -27,6 +34,9 @@ import type { ArtifactStore } from './artifacts/artifact-store.js'
 // 应用依赖容器 — 初始化并组装所有核心组件
 // ============================================================
 
+// Workflow 专用 Agent ID（不注册到 A2APolicy 的"发起方"白名单中会被拦截，此处允许）
+const WORKFLOW_RUNNER_AGENT_ID = 'workflow-runner'
+
 export type AppContainer = {
   runManager: RunManager
   a2aClient: A2AClient
@@ -36,6 +46,11 @@ export type AppContainer = {
   artifactStore: ArtifactStore
   agentsService: AgentsService
   artifactsService: ArtifactsService
+  workflowRunner: WorkflowRunner
+  workflowRegistry: WorkflowRegistry
+  workflowStore: WorkflowStore
+  humanGate: HumanGateManager
+  artifactVersionManager: ArtifactVersionManager
 }
 
 function createStore(): RunStore {
@@ -66,14 +81,15 @@ export function createContainer(): AppContainer {
 
   // ─── A2A 层 ──────────────────────────────────────────────
   const a2aPolicy = new A2APolicy()
-  // 注册允许的调用关系
+  // 注册允许的调用关系（Supervisor → 专业 Agent）
   a2aPolicy.allow(SUPERVISOR_AGENT_ID, [RESEARCH_AGENT_ID, SUMMARY_AGENT_ID])
+  // WorkflowRunner 可以调用所有已注册 Agent
+  a2aPolicy.allow(WORKFLOW_RUNNER_AGENT_ID, [RESEARCH_AGENT_ID, SUMMARY_AGENT_ID])
 
   const a2aRouter = new A2ARouter()
   const a2aClient = new A2AClient(store, a2aPolicy, a2aRouter)
 
   // ─── 专业 Agent 注册 ─────────────────────────────────────
-  // ResearchAgent 现在需要 artifactStore（用于写入 research_report Artifact）
   const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
   const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
 
@@ -89,15 +105,38 @@ export function createContainer(): AppContainer {
     execute: (input, ctx) => supervisorAgent.execute(input as Parameters<typeof supervisorAgent.execute>[0], ctx),
   })
 
+  // ─── Workflow 层 ─────────────────────────────────────────
+  const workflowStore = new MemoryWorkflowStore()
+  const workflowRegistry = new WorkflowRegistry()
+  const workflowRunner = new WorkflowRunner(a2aClient, workflowStore, store)
+
+  // ─── Artifact 版本管理 ────────────────────────────────────
+  const artifactVersionManager = new ArtifactVersionManager(artifactStore)
+
+  // ─── Service 层 ──────────────────────────────────────────
+  const agentsService = new AgentsService(a2aRouter)
+  const artifactsService = new ArtifactsService(artifactStore)
+
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
   })
 
-  const agentsService = new AgentsService(a2aRouter)
-  const artifactsService = new ArtifactsService(artifactStore)
-
-  return { runManager, a2aClient, a2aRouter, a2aPolicy, store, artifactStore, agentsService, artifactsService }
+  return {
+    runManager,
+    a2aClient,
+    a2aRouter,
+    a2aPolicy,
+    store,
+    artifactStore,
+    agentsService,
+    artifactsService,
+    workflowRunner,
+    workflowRegistry,
+    workflowStore,
+    humanGate,
+    artifactVersionManager,
+  }
 }
 
 // 单例容器（在整个应用生命周期中共享）

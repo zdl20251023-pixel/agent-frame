@@ -28,6 +28,19 @@ export const EVENT_TYPES = {
   // Artifact
   ARTIFACT_CREATED: 'artifact.created',
   ARTIFACT_VERSION_CREATED: 'artifact.version.created',
+
+  // Workflow
+  WORKFLOW_STARTED: 'workflow.started',
+  WORKFLOW_COMPLETED: 'workflow.completed',
+  WORKFLOW_FAILED: 'workflow.failed',
+  WORKFLOW_CANCELLED: 'workflow.cancelled',
+  WORKFLOW_STAGE_STARTED: 'workflow.stage.started',
+  WORKFLOW_STAGE_COMPLETED: 'workflow.stage.completed',
+  WORKFLOW_STAGE_FAILED: 'workflow.stage.failed',
+  WORKFLOW_STAGE_SKIPPED: 'workflow.stage.skipped',
+  WORKFLOW_HUMAN_GATE_WAITING: 'workflow.human_gate.waiting',
+  WORKFLOW_HUMAN_GATE_APPROVED: 'workflow.human_gate.approved',
+  WORKFLOW_HUMAN_GATE_REJECTED: 'workflow.human_gate.rejected',
 } as const
 
 export type EventType = typeof EVENT_TYPES[keyof typeof EVENT_TYPES]

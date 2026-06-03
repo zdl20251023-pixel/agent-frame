@@ -5,6 +5,7 @@ import { agentsRoute } from './features/agents/agents.route.js'
 import { artifactsRoute } from './features/artifacts/artifacts.route.js'
 import { authRoute } from './features/auth/auth.route.js'
 import { sessionsRoute } from './features/sessions/sessions.route.js'
+import { workflowsRoute } from './features/workflows/workflows.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
@@ -96,6 +97,7 @@ export function createApp() {
     .use(runsRoute)
     .use(agentsRoute)
     .use(artifactsRoute)
+    .use(workflowsRoute)
 
   return app
 }

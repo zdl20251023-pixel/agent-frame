@@ -3,11 +3,90 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 1 A2A MVP（进行中）**
+> 当前阶段：**阶段 2 Artifact 完善 + Workflow 轻量 MVP（已完成）→ 进入阶段 3**
+
+---
+
+## 📋 任务进度总览
+
+> 快速查看所有待办项的完成状态。详细实现说明见后续各章节。
+>
+> **图例**：✅ 已完成 │ 🚧 进行中 │ ❌ 未开始
+
+### 阶段 1 — A2A MVP 扫尾（P0 / P1）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 1.1 | Token Usage 正确落库（inputTokens / outputTokens）| P0 | ✅ | 2026-06-03 |
+| 1.2 | `artifact_versions.created_by_step_id` 赋值 | P0 | ✅ | 2026-06-03 |
+| 1.3 | `a2a/a2a-events.ts` 事件构造函数独立 | P1 | ✅ | 2026-06-03 |
+| 1.4 | `AppErrorCode` 迁移到 `packages/shared` 前后端共享 | P1 | ✅ | 2026-06-03 |
+| 1.5 | `features/agents/agents.service.ts` 动态 Agent 查询服务 | P1 | ✅ | 2026-06-03 |
+| 1.6 | `features/artifacts/artifacts.service.ts` Service 层补全 | P1 | ✅ | 2026-06-03 |
+
+### 阶段 2 — Artifact 完善 + Workflow 轻量 MVP（P2）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 2.1 | `artifacts/artifact-version.ts` 版本管理独立模块 | P2 | ✅ | 2026-06-03 |
+| 2.2 | `artifacts/artifact-policy.ts` 产物访问权限策略 | P2 | ✅ | 2026-06-03 |
+| 2.3 | 前端 `features/artifacts/` 产物预览页面 | P2 | ✅ | 2026-06-03 |
+| 2.4 | `workflow/workflow-definition.ts` 类型定义 | P2 | ✅ | 2026-06-03 |
+| 2.5 | `workflow/workflow-runner.ts` 轻量 Runner | P2 | ✅ | 2026-06-03 |
+| 2.6 | `workflow/stage-executor.ts` 单阶段执行 | P2 | ✅ | 2026-06-03 |
+| 2.7 | `workflow/workflow-store.ts` 状态存储（内存 MVP） | P2 | ✅ | 2026-06-03 |
+| 2.8 | `workflow/retry-policy.ts` 阶段重试策略 | P2 | ✅ | 2026-06-03 |
+| 2.9 | `workflow/human-gate.ts` 人工节点接口预留 | P2 | ✅ | 2026-06-03 |
+| 2.10 | `packages/shared` Workflow 事件类型常量 | P2 | ✅ | 2026-06-03 |
+| 2.11 | Workflow API（`GET /workflows`、`POST /workflows/:id/runs`）| P2 | ✅ | 2026-06-03 |
+| 2.12 | `a2a/remote-agent-adapter.ts` 远程 Agent HTTP 适配器 | P2 | ✅ | 2026-06-03 |
+
+### 阶段 3 — Project + Memory + Session 完善（P2）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 3.1 | `features/projects/` Project CRUD API | P2 | ❌ | — |
+| 3.2 | `shared/db/schema.ts` 新增 `projects` 表 | P2 | ❌ | — |
+| 3.3 | `packages/shared/models/project.ts` 共享类型 | P2 | ❌ | — |
+| 3.4 | `memory/memory-store.mysql.ts` MySQL 持久化 | P2 | ❌ | — |
+| 3.5 | `memory/memory-retriever.ts` 记忆召回 | P2 | ❌ | — |
+| 3.6 | `memory/memory-policy.ts` 记忆写入策略 | P3 | ❌ | — |
+| 3.7 | `features/sessions/` 完整消息归档 + Run 归属查询 | P2 | ❌ | — |
+
+### 阶段 4 — 可观测性、安全与生产化（P2 / P3）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 4.1 | `shared/observability/tracing.ts` traceId 贯穿链路追踪 | P2 | ❌ | — |
+| 4.2 | `features/usage/` Token / 成本统计 API | P2 | ❌ | — |
+| 4.3 | `features/auth/` 完整 JWT 认证 | P2 | ❌ | — |
+| 4.4 | `shared/middlewares/rate-limit.middleware.ts` 请求限流 | P3 | ❌ | — |
+| 4.5 | `shared/realtime/ws.hub.ts` WebSocket 多 Run 订阅 | P2 | ❌ | — |
+| 4.6 | `shared/observability/metrics.ts` 指标采集 | P3 | ❌ | — |
+
+### 阶段 5 — Plugin 扩展（P3）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 5.1 | `plugins/plugin-context.ts` 完整 PluginContext 实现 | P3 | ❌ | — |
+| 5.2 | `plugins/builtin-plugins.ts` 内置 Agent 插件注册 | P3 | ❌ | — |
+| 5.3 | 前端 `features/agents/` Agent 列表与能力展示页 | P1 | ❌ | — |
+| 5.4 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | ❌ | — |
+
+### 阶段 6 — 生产化与规模化（P3）
+
+| # | 任务 | 优先级 | 状态 | 完成日期 |
+|---|---|---|---|---|
+| 6.1 | Redis EventBus（替换内存 EventBus，支持多实例）| P3 | ❌ | — |
+| 6.2 | A2A 异步模式 `startAsync()` + Worker | P3 | ❌ | — |
+| 6.3 | `runtime/scheduler.ts` 并发控制 + 优先级队列 | P3 | ❌ | — |
+| 6.4 | E2E 测试 + GitHub Actions CI/CD | P3 | ❌ | — |
+| 6.5 | Docker 部署支持 | P3 | ❌ | — |
 
 ---
 
 ## 一、当前 MVP 实现状态
+
 
 ### 1.1 已完成模块 ✅
 
