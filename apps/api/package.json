@@ -14,6 +14,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "db:init": "bun run scripts/db-init.ts",
+    "db:clear": "bun run scripts/db-clear.ts",
     "test": "bun test"
   },
   "dependencies": {
