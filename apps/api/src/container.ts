@@ -14,6 +14,8 @@ import {
   RESEARCH_AGENT_ID,
   SUMMARY_AGENT_ID,
 } from './ai/agents/agent-ids.js'
+import { AgentsService } from './features/agents/agents.service.js'
+import { ArtifactsService } from './features/artifacts/artifacts.service.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
 import type { RunStore } from './runtime/stores/run-store.js'
@@ -32,6 +34,8 @@ export type AppContainer = {
   a2aPolicy: A2APolicy
   store: RunStore
   artifactStore: ArtifactStore
+  agentsService: AgentsService
+  artifactsService: ArtifactsService
 }
 
 function createStore(): RunStore {
@@ -90,7 +94,10 @@ export function createContainer(): AppContainer {
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
   })
 
-  return { runManager, a2aClient, a2aRouter, a2aPolicy, store, artifactStore }
+  const agentsService = new AgentsService(a2aRouter)
+  const artifactsService = new ArtifactsService(artifactStore)
+
+  return { runManager, a2aClient, a2aRouter, a2aPolicy, store, artifactStore, agentsService, artifactsService }
 }
 
 // 单例容器（在整个应用生命周期中共享）

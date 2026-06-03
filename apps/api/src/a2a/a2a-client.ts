@@ -1,14 +1,14 @@
 import type { A2ARequest, A2AResponse, AgentEvent } from '@agent-frame/shared'
-import { EVENT_TYPES, STEP_TYPES, A2A_CALL_MODES, STEP_STATUS, A2A_STATUSES } from '@agent-frame/shared'
+import { A2A_CALL_MODES, STEP_TYPES, A2A_STATUSES } from '@agent-frame/shared'
 import type { RunStore } from '../runtime/stores/run-store.js'
 import type { RunContext } from '../runtime/run-manager.js'
 import { RunEventEmitter } from '../runtime/event-emitter.js'
 import { StepManager } from '../runtime/step-manager.js'
 import { A2APolicy } from './a2a-policy.js'
 import { A2ARouter } from './a2a-router.js'
+import { buildA2AStartedEvent, buildA2ACompletedEvent, buildA2AFailedEvent } from './a2a-events.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
-import { now } from '../shared/utils/id.js'
 
 // ============================================================
 // A2AClient — Agent 调用 Agent 的唯一入口
@@ -63,18 +63,18 @@ export class A2AClient {
     })
     const stepId = step.id
 
-    // ─── 4. 发出 agent.call.started ──────────────────────────
-    await this.emitter.emit({
-      type: EVENT_TYPES.AGENT_CALL_STARTED,
-      runId,
-      traceId,
-      stepId,
-      parentStepId: request.parentStepId,
-      fromAgentId: request.fromAgentId,
-      toAgentId: request.toAgentId,
-      inputPreview: this.safePreview(request.input),
-      timestamp: now(),
-    })
+    // ─── 4. 发出 agent.call.started ────────────────────────────
+    await this.emitter.emit(
+      buildA2AStartedEvent({
+        runId,
+        traceId,
+        stepId,
+        parentStepId: request.parentStepId,
+        fromAgentId: request.fromAgentId,
+        toAgentId: request.toAgentId,
+        inputPreview: this.safePreview(request.input),
+      }),
+    )
 
     log.info('[A2AClient] callSync started')
 
@@ -104,17 +104,17 @@ export class A2AClient {
 
       // ─── 8. 更新 Step、发出 completed 事件 ──────────────────
       await this.stepManager.completeStep(stepId, result.output)
-      await this.emitter.emit({
-        type: EVENT_TYPES.AGENT_CALL_COMPLETED,
-        runId,
-        traceId,
-        stepId,
-        fromAgentId: request.fromAgentId,
-        toAgentId: request.toAgentId,
-        outputPreview: this.safePreview(result.output),
-        latencyMs,
-        timestamp: now(),
-      })
+      await this.emitter.emit(
+        buildA2ACompletedEvent({
+          runId,
+          traceId,
+          stepId,
+          fromAgentId: request.fromAgentId,
+          toAgentId: request.toAgentId,
+          outputPreview: this.safePreview(result.output),
+          latencyMs,
+        }),
+      )
 
       log.info('[A2AClient] callSync completed', { latencyMs })
       context.depth--
@@ -135,16 +135,16 @@ export class A2AClient {
       const appErr = err instanceof AppError ? err : new AppError('AGENT_CALL_FAILED', String(err))
 
       await this.stepManager.failStep(stepId, { code: appErr.code, message: appErr.message })
-      await this.emitter.emit({
-        type: EVENT_TYPES.AGENT_CALL_FAILED,
-        runId,
-        traceId,
-        stepId,
-        fromAgentId: request.fromAgentId,
-        toAgentId: request.toAgentId,
-        error: { code: appErr.code, message: appErr.message },
-        timestamp: now(),
-      })
+      await this.emitter.emit(
+        buildA2AFailedEvent({
+          runId,
+          traceId,
+          stepId,
+          fromAgentId: request.fromAgentId,
+          toAgentId: request.toAgentId,
+          error: { code: appErr.code, message: appErr.message },
+        }),
+      )
 
       log.error('[A2AClient] callSync failed', { latencyMs, errorCode: appErr.code })
       context.depth--

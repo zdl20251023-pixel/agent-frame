@@ -1,42 +1,11 @@
 // ============================================================
-// 统一错误类型和错误码
+// 统一错误类
+// AppErrorCode 定义在 @agent-frame/shared，前后端共用
 // ============================================================
 
-export type AppErrorCode =
-  | 'BAD_REQUEST'
-  | 'UNAUTHORIZED'
-  | 'FORBIDDEN'
-  | 'NOT_FOUND'
-  | 'RUN_TIMEOUT'
-  | 'RUN_CANCELLED'
-  | 'AGENT_NOT_FOUND'
-  | 'AGENT_CALL_DENIED'
-  | 'AGENT_CALL_TIMEOUT'
-  | 'AGENT_CALL_FAILED'
-  | 'AGENT_MODE_NOT_SUPPORTED'
-  | 'A2A_ASYNC_NOT_IMPLEMENTED'
-  | 'TOOL_CALL_FAILED'
-  | 'MODEL_CALL_FAILED'
-  | 'MODEL_TIMEOUT'
-  | 'RATE_LIMIT'
-  | 'BUDGET_EXCEEDED'
-  | 'ARTIFACT_SAVE_FAILED'
-  | 'OUTPUT_VALIDATION_FAILED'
-  | 'INTERNAL_ERROR'
+import { type AppErrorCode, ERROR_HTTP_STATUS } from '@agent-frame/shared'
 
-// HTTP 状态码映射
-const STATUS_CODE_MAP: Partial<Record<AppErrorCode, number>> = {
-  BAD_REQUEST: 400,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  RATE_LIMIT: 429,
-  BUDGET_EXCEEDED: 402,
-  INTERNAL_ERROR: 500,
-  MODEL_CALL_FAILED: 502,
-  AGENT_CALL_TIMEOUT: 504,
-  RUN_TIMEOUT: 504,
-}
+export type { AppErrorCode }
 
 export class AppError extends Error {
   public readonly code: AppErrorCode
@@ -58,7 +27,7 @@ export class AppError extends Error {
     super(message)
     this.name = 'AppError'
     this.code = code
-    this.statusCode = options?.statusCode ?? STATUS_CODE_MAP[code] ?? 500
+    this.statusCode = options?.statusCode ?? ERROR_HTTP_STATUS[code] ?? 500
     this.retryable = options?.retryable ?? false
     this.details = options?.details
     this.cause = options?.cause

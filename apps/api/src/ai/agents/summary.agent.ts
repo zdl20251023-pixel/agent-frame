@@ -95,7 +95,7 @@ export class SummaryAgent {
           },
         },
         { summary: fullText, generatedAt: now() },
-        { runId, stepId, agentId: this.agentId },
+        { runId, stepId: modelStep.id, agentId: this.agentId },
       )
 
       artifactId = artifact.id

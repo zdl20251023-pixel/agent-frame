@@ -176,7 +176,10 @@ export class VercelAIModelClient implements ModelClient {
         if (part.type === AI_SDK_PART_TYPES.TEXT_DELTA) {
           yield { type: MODEL_STREAM_EVENT_TYPES.TEXT_DELTA, delta: (part as any).text, timestamp: now() }
         } else if (part.type === AI_SDK_PART_TYPES.FINISH) {
-          finalUsage = normalizeUsage((part as any).totalUsage || (part as any).usage)
+          // Vercel AI SDK finish part 包含 usage 字段
+          // 字段名可能是 usage（新版）或 totalUsage（旧版），normalizeUsage 统一处理
+          const rawUsage = (part as any).usage ?? (part as any).totalUsage
+          finalUsage = normalizeUsage(rawUsage)
           yield {
             type: MODEL_STREAM_EVENT_TYPES.MODEL_COMPLETED,
             usage: finalUsage,
@@ -228,7 +231,7 @@ export class VercelAIModelClient implements ModelClient {
       }
 
       yield {
-        type: 'model.failed',
+        type: MODEL_STREAM_EVENT_TYPES.MODEL_FAILED,
         error: { code: 'MODEL_CALL_FAILED', message, retryable: true },
         timestamp: now(),
       }
