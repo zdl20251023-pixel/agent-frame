@@ -26,7 +26,12 @@ export type AgentCapability = {
   maxRuntimeMs: number
   costLevel: 'low' | 'medium' | 'high'
   requiresApproval?: boolean
+  /** 调用该 Agent 所需权限标识，例如 ['weather:query', 'research:read'] */
+  permissions?: string[]
+  /** 风险级别，高风险 Agent 后续可接人工审批 */
+  riskLevel?: 'low' | 'medium' | 'high'
 }
+
 
 // 统一 Agent 执行输入
 export type AgentInput<T = unknown> = {

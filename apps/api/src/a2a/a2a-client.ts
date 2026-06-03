@@ -7,7 +7,7 @@ import { A2APolicy } from './a2a-policy.js'
 import { A2ARouter } from './a2a-router.js'
 import { logger } from '../shared/observability/logger.js'
 import { AppError } from '../shared/errors/app-error.js'
-import { generateStepId, now } from '../shared/utils/id.js'
+import { now } from '../shared/utils/id.js'
 
 // ============================================================
 // A2AClient — Agent 调用 Agent 的唯一入口
@@ -30,9 +30,22 @@ export class A2AClient {
   async callSync(request: A2ARequest, context: RunContext): Promise<A2AResponse & { mode: 'sync' }> {
     const { runId, traceId } = request
     const log = logger.child({ runId, traceId, fromAgentId: request.fromAgentId, toAgentId: request.toAgentId })
+    const startMs = Date.now()
 
-    // ─── 1. Policy 检查 ──────────────────────────────────────
-    this.policy.assertCanCall(request, context)
+    // ─── 1. Policy 检查（在 try 内，失败也能返回 failed 状态）──
+    try {
+      this.policy.assertCanCall(request, context)
+    } catch (err: unknown) {
+      const latencyMs = Date.now() - startMs
+      const appErr = err instanceof AppError ? err : new AppError('AGENT_CALL_DENIED', String(err))
+      log.warn('[A2AClient] callSync denied by policy', { errorCode: appErr.code })
+      return {
+        mode: 'sync',
+        status: 'failed',
+        error: { code: appErr.code, message: appErr.message },
+        latencyMs,
+      }
+    }
 
     // ─── 2. 更新调用计数 ─────────────────────────────────────
     context.callCount++
@@ -63,7 +76,6 @@ export class A2AClient {
     })
 
     log.info('[A2AClient] callSync started')
-    const startMs = Date.now()
 
     try {
       // ─── 5. 路由到目标 Agent ────────────────────────────────

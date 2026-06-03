@@ -4,8 +4,18 @@ import type { RunContext } from '../../runtime/run-manager.js'
 import { RunEventEmitter } from '../../runtime/event-emitter.js'
 import type { RunStore } from '../../runtime/stores/run-store.js'
 import type { A2AClient } from '../../a2a/a2a-client.js'
-import { RESEARCH_AGENT_ID } from './research.agent.js'
-import { SUMMARY_AGENT_ID } from './summary.agent.js'
+import { StepManager } from '../../runtime/step-manager.js'
+import {
+  SUPERVISOR_AGENT_ID,
+  RESEARCH_AGENT_ID,
+  SUMMARY_AGENT_ID,
+} from './agent-ids.js'
+import {
+  SUPERVISOR_PLAN_SYSTEM,
+  SUPERVISOR_ANSWER_SYSTEM,
+  supervisorPlanPrompt,
+  supervisorAnswerPrompt,
+} from '../prompts/index.js'
 import { now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
 
@@ -15,7 +25,7 @@ import { logger } from '../../shared/observability/logger.js'
 // 禁止直接 import 专业 Agent 并调用，必须走 A2AClient
 // ============================================================
 
-export const SUPERVISOR_AGENT_ID = 'supervisor-agent'
+export { SUPERVISOR_AGENT_ID }
 
 type SupervisorPayload = {
   message: string
@@ -24,12 +34,15 @@ type SupervisorPayload = {
 
 export class SupervisorAgent {
   readonly agentId = SUPERVISOR_AGENT_ID
+  private stepManager: StepManager
 
   constructor(
     private modelClient: ModelClient,
     private a2aClient: A2AClient,
     private store: RunStore,
-  ) {}
+  ) {
+    this.stepManager = new StepManager(store)
+  }
 
   async execute(
     input: AgentInput<SupervisorPayload>,
@@ -41,27 +54,33 @@ export class SupervisorAgent {
 
     log.info('[SupervisorAgent] Analyzing task', { message: payload.message })
 
-    // ─── Step 1：分析任务，决定调用策略 ─────────────────────
-    const planResult = await this.modelClient.generate({
-      model: 'fast.chat',
-      system: `你是一个任务调度专家。
-分析用户请求，决定是否需要调用专业 Agent，以 JSON 格式回答：
-{
-  "needsResearch": true/false,     // 是否需要研究分析
-  "needsSummary": true/false,      // 研究后是否需要总结
-  "researchQuery": "...",          // 如果需要研究，具体查询内容
-  "directAnswer": "..."            // 如果不需要专业Agent，直接回答
-}`,
-      prompt: `用户请求：${payload.message}`,
-      metadata: { runId, agentId: this.agentId, traceId },
+    // ─── Step 1：创建 model_call Step，分析任务决定调用策略 ──
+    const planStep = await this.stepManager.startStep({
+      runId,
+      type: 'model_call',
+      agentId: this.agentId,
+      input: { model: 'fast.chat', purpose: 'task_planning' },
     })
 
     let plan: { needsResearch: boolean; needsSummary: boolean; researchQuery?: string; directAnswer?: string }
     try {
-      // 从生成文本中提取 JSON
-      const jsonMatch = planResult.text.match(/\{[\s\S]*\}/)
-      plan = jsonMatch ? JSON.parse(jsonMatch[0]) : { needsResearch: true, needsSummary: false }
-    } catch {
+      const planResult = await this.modelClient.generate({
+        model: 'fast.chat',
+        system: SUPERVISOR_PLAN_SYSTEM,
+        prompt: supervisorPlanPrompt(payload.message),
+        metadata: { runId, agentId: this.agentId, traceId, stepId: planStep.id },
+      })
+
+      try {
+        const jsonMatch = planResult.text.match(/\{[\s\S]*\}/)
+        plan = jsonMatch ? JSON.parse(jsonMatch[0]) : { needsResearch: true, needsSummary: false }
+      } catch {
+        plan = { needsResearch: true, needsSummary: false, researchQuery: payload.message }
+      }
+
+      await this.stepManager.completeStep(planStep.id, { plan })
+    } catch (err) {
+      await this.stepManager.failStep(planStep.id, err)
       plan = { needsResearch: true, needsSummary: false, researchQuery: payload.message }
     }
 
@@ -69,7 +88,6 @@ export class SupervisorAgent {
 
     // ─── Step 2：如果不需要专业 Agent，直接回答 ─────────────
     if (!plan.needsResearch && plan.directAnswer) {
-      // 发出 message.delta（模拟流式）
       for (const char of plan.directAnswer) {
         await emitter.emit({
           type: 'message.delta',
@@ -124,25 +142,37 @@ export class SupervisorAgent {
       }
     }
 
-    // ─── Step 5：生成最终回答 ────────────────────────────────
+    // ─── Step 5：创建 model_call Step，生成最终回答 ──────────
+    const answerStep = await this.stepManager.startStep({
+      runId,
+      type: 'model_call',
+      agentId: this.agentId,
+      input: { model: 'fast.chat', purpose: 'final_answer' },
+    })
+
     let answer = ''
-    for await (const event of this.modelClient.stream({
-      model: 'fast.chat',
-      system: '你是一个智能助手，请根据研究结果给用户一个友好、清晰的最终回答。',
-      prompt: `用户问题：${payload.message}\n\n研究结果：\n${finalContent}\n\n请给出最终回答：`,
-      metadata: { runId, agentId: this.agentId, traceId },
-    })) {
-      if (event.type === 'text.delta') {
-        answer += event.delta
-        await emitter.emit({
-          type: 'message.delta',
-          runId,
-          agentId: this.agentId,
-          delta: event.delta,
-          timestamp: now(),
-        })
-        if (input.signal?.aborted) break
+    try {
+      for await (const event of this.modelClient.stream({
+        model: 'fast.chat',
+        system: SUPERVISOR_ANSWER_SYSTEM,
+        prompt: supervisorAnswerPrompt(payload.message, finalContent),
+        metadata: { runId, agentId: this.agentId, traceId, stepId: answerStep.id },
+      })) {
+        if (event.type === 'text.delta') {
+          answer += event.delta
+          await emitter.emit({
+            type: 'message.delta',
+            runId,
+            agentId: this.agentId,
+            delta: event.delta,
+            timestamp: now(),
+          })
+          if (input.signal?.aborted) break
+        }
       }
+      await this.stepManager.completeStep(answerStep.id, { answerLength: answer.length })
+    } catch (err) {
+      await this.stepManager.failStep(answerStep.id, err)
     }
 
     log.info('[SupervisorAgent] Task completed', { answerLength: answer.length })

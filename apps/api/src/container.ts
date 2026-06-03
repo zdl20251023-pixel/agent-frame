@@ -4,10 +4,16 @@ import { RunManager } from './runtime/run-manager.js'
 import { A2APolicy } from './a2a/a2a-policy.js'
 import { A2ARouter } from './a2a/a2a-router.js'
 import { A2AClient } from './a2a/a2a-client.js'
+import { createLocalAgentAdapter } from './a2a/local-agent-adapter.js'
 import { VercelAIModelClient } from './ai/model-client/vercel-ai-model-client.js'
-import { SupervisorAgent, SUPERVISOR_AGENT_ID } from './ai/agents/supervisor.agent.js'
-import { ResearchAgent, RESEARCH_AGENT_ID } from './ai/agents/research.agent.js'
-import { SummaryAgent, SUMMARY_AGENT_ID } from './ai/agents/summary.agent.js'
+import { SupervisorAgent } from './ai/agents/supervisor.agent.js'
+import { ResearchAgent } from './ai/agents/research.agent.js'
+import { SummaryAgent } from './ai/agents/summary.agent.js'
+import {
+  SUPERVISOR_AGENT_ID,
+  RESEARCH_AGENT_ID,
+  SUMMARY_AGENT_ID,
+} from './ai/agents/agent-ids.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
 import type { RunStore } from './runtime/stores/run-store.js'
@@ -63,17 +69,12 @@ export function createContainer(): AppContainer {
   const a2aClient = new A2AClient(store, a2aPolicy, a2aRouter)
 
   // ─── 专业 Agent 注册 ─────────────────────────────────────
-  const researchAgent = new ResearchAgent(modelClient, store)
+  // ResearchAgent 现在需要 artifactStore（用于写入 research_report Artifact）
+  const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
   const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
 
-  a2aRouter.register({
-    agentId: RESEARCH_AGENT_ID,
-    execute: (input, ctx) => researchAgent.execute(input as Parameters<typeof researchAgent.execute>[0], ctx),
-  })
-  a2aRouter.register({
-    agentId: SUMMARY_AGENT_ID,
-    execute: (input, ctx) => summaryAgent.execute(input as Parameters<typeof summaryAgent.execute>[0], ctx),
-  })
+  a2aRouter.register(createLocalAgentAdapter(researchAgent))
+  a2aRouter.register(createLocalAgentAdapter(summaryAgent))
 
   // ─── SupervisorAgent ─────────────────────────────────────
   const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store)

@@ -15,6 +15,8 @@ export type PolicyConfig = {
   defaultTimeoutMs: number
   // 允许的调用关系：fromAgentId -> Set<toAgentId>
   allowedCalls: Map<string, Set<string>>
+  // 预算控制：单次 Run 最大估算成本（USD），0 表示不限制
+  costBudgetUsd: number
 }
 
 export class A2APolicy {
@@ -26,6 +28,7 @@ export class A2APolicy {
       maxCallsPerRun: config?.maxCallsPerRun ?? env.MAX_AGENT_CALLS_PER_RUN,
       defaultTimeoutMs: config?.defaultTimeoutMs ?? env.DEFAULT_A2A_TIMEOUT_MS,
       allowedCalls: config?.allowedCalls ?? new Map(),
+      costBudgetUsd: config?.costBudgetUsd ?? 0,  // 0 = 不限制
     }
   }
 
@@ -76,6 +79,21 @@ export class A2APolicy {
         `Max agent calls per run (${this.config.maxCallsPerRun}) exceeded`,
         { statusCode: 403 },
       )
+    }
+
+    // ─── 预算检查 ──────────────────────────────────────────
+    if (this.config.costBudgetUsd > 0 && context.totalCostUsd !== undefined) {
+      if (context.totalCostUsd >= this.config.costBudgetUsd) {
+        log.warn('[A2APolicy] Call denied: cost budget exceeded', {
+          totalCostUsd: context.totalCostUsd,
+          budgetUsd: this.config.costBudgetUsd,
+        })
+        throw new AppError(
+          'AGENT_CALL_DENIED',
+          `Cost budget (${this.config.costBudgetUsd} USD) exceeded`,
+          { statusCode: 403 },
+        )
+      }
     }
 
     log.debug('[A2APolicy] Call allowed')

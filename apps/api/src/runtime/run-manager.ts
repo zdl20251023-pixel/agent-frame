@@ -17,6 +17,7 @@ export type RunContext = {
   signal: AbortSignal
   depth: number        // 当前 A2A 调用深度
   callCount: number    // 当前 Run 总 A2A 调用次数
+  totalCostUsd: number // 当前 Run 累计估算成本（USD），用于 costBudget 检查
 }
 
 // ============================================================
@@ -71,7 +72,7 @@ export class RunManager {
     })
 
     const signal = cancellationManager.create(runId)
-    const context: RunContext = { runId, traceId, userId: options.userId, signal, depth: 0, callCount: 0 }
+    const context: RunContext = { runId, traceId, userId: options.userId, signal, depth: 0, callCount: 0, totalCostUsd: 0 }
     this.activeContexts.set(runId, context)
 
     logger.info('[RunManager] Run created', { runId, traceId, agentId: options.agentId })

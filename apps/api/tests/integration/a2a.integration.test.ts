@@ -74,7 +74,10 @@ describe('A2A Integration Tests', () => {
       payload: {},
       mode: 'sync',
     }
-    await expect(client.callSync(req, context)).rejects.toThrow('Agent agent-b is not allowed to call agent-a')
+    const res = await client.callSync(req, context)
+    expect(res.status).toBe('failed')
+    expect(res.error?.code).toBe('AGENT_CALL_DENIED')
+    expect(res.error?.message).toContain('Agent agent-b is not allowed to call agent-a')
   })
 
   it('should enforce max depth', async () => {
@@ -91,7 +94,10 @@ describe('A2A Integration Tests', () => {
     // depth is incremented by client internally (so context.depth gets mutated)
     // we need to set context.depth to something high to trigger error easily, or loop it
     context.depth = 2
-    await expect(client.callSync(req, context)).rejects.toThrow(/Max A2A depth.*exceeded/)
+    const res = await client.callSync(req, context)
+    expect(res.status).toBe('failed')
+    expect(res.error?.code).toBe('AGENT_CALL_DENIED')
+    expect(res.error?.message).toMatch(/Max A2A depth.*exceeded/)
   })
 
   it('should enforce max call count', async () => {
@@ -105,7 +111,10 @@ describe('A2A Integration Tests', () => {
       mode: 'sync',
     }
 
-    await expect(client.callSync(req, context)).rejects.toThrow(/Max.*calls.*exceeded/)
+    const res = await client.callSync(req, context)
+    expect(res.status).toBe('failed')
+    expect(res.error?.code).toBe('AGENT_CALL_DENIED')
+    expect(res.error?.message).toMatch(/Max.*calls.*exceeded/)
   })
 
   it('should enforce timeout', async () => {

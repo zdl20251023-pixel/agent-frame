@@ -1,28 +1,26 @@
 import { Elysia, t } from 'elysia'
 import { container } from '../../container.js'
 import { createSseStream } from '../../shared/realtime/sse.handler.js'
-import { AppError, isAppError } from '../../shared/errors/app-error.js'
+import { isAppError } from '../../shared/errors/app-error.js'
 import { logger } from '../../shared/observability/logger.js'
 import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { sessionsService } from '../sessions/sessions.service.js'
+import { RunsService } from './runs.service.js'
 
+// ─── 初始化 Service 层 ────────────────────────────────────────
 sessionsService.setRunStore(container.store)
+
+const runsService = new RunsService(
+  container.runManager,
+  container.store,
+  container.artifactStore,
+  sessionsService,
+)
 
 // ============================================================
 // Runs Feature — HTTP API 入口（需登录）
+// route 只负责 HTTP 协议层，业务逻辑委托给 RunsService
 // ============================================================
-
-async function assertRunAccess(runId: string, userId: string) {
-  await sessionsService.assertRunOwnedByUser(runId, userId)
-}
-
-function extractMessage(input: unknown): string {
-  if (input && typeof input === 'object' && input !== null && 'message' in input) {
-    const msg = (input as { message?: unknown }).message
-    if (typeof msg === 'string') return msg
-  }
-  return ''
-}
 
 export const runsRoute = new Elysia({ prefix: '/runs' })
   .use(requireAuthPlugin)
@@ -32,7 +30,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     async ({ authUser, query, set }) => {
       try {
         const limit = Math.min(Number(query.limit ?? 20), 100)
-        const runs = await container.store.listRunsByUser(authUser!.id, limit)
+        const runs = await runsService.listRuns(authUser!.id, limit)
         return { runs, total: runs.length }
       } catch (err) {
         logger.error('[runs.route] GET /runs failed', { errorCode: 'INTERNAL_ERROR' })
@@ -51,31 +49,15 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/',
     async ({ authUser, body, set }) => {
       try {
-        const userId = authUser!.id
-        const sessionId = await sessionsService.resolveSessionId(userId, body.sessionId)
-        const message = extractMessage(body.input)
-
-        const run = await container.runManager.createRun({
+        const result = await runsService.createRun({
           input: body.input,
           agentId: body.agentId,
-          userId,
+          userId: authUser!.id,
           projectId: body.projectId,
-          sessionId,
+          sessionId: body.sessionId,
         })
-
-        await sessionsService.touchSession(sessionId)
-        if (message) {
-          await sessionsService.maybeSetTitleFromMessage(sessionId, userId, message)
-        }
-
         set.status = 201
-        return {
-          runId: run.id,
-          traceId: run.traceId,
-          status: run.status,
-          sessionId,
-          createdAt: run.createdAt,
-        }
+        return result
       } catch (err) {
         if (isAppError(err)) {
           set.status = err.statusCode
@@ -100,12 +82,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/:runId',
     async ({ authUser, params, set }) => {
       try {
-        await assertRunAccess(params.runId, authUser!.id)
-        const run = await container.runManager.getRun(params.runId)
-        if (!run) {
-          set.status = 404
-          return { code: 'NOT_FOUND', message: `Run not found: ${params.runId}` }
-        }
+        const run = await runsService.getRun(params.runId, authUser!.id)
         return run
       } catch (err) {
         if (isAppError(err)) {
@@ -122,8 +99,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/:runId/steps',
     async ({ authUser, params, set }) => {
       try {
-        await assertRunAccess(params.runId, authUser!.id)
-        const steps = await container.store.listSteps(params.runId)
+        const steps = await runsService.getSteps(params.runId, authUser!.id)
         return { runId: params.runId, steps }
       } catch (err) {
         if (isAppError(err)) {
@@ -140,7 +116,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/:runId/events',
     async ({ authUser, params, query, set }) => {
       try {
-        await assertRunAccess(params.runId, authUser!.id)
+        await runsService.assertRunAccess(params.runId, authUser!.id)
         const run = await container.runManager.getRun(params.runId)
         if (!run) {
           set.status = 404
@@ -148,7 +124,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
         }
 
         if (query.replay === 'true') {
-          const events = await container.store.listEvents(params.runId)
+          const events = await runsService.getEvents(params.runId, authUser!.id)
           return { runId: params.runId, events, total: events.length }
         }
 
@@ -163,7 +139,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
         logger.info('[runs.route] SSE subscription started', { runId: params.runId })
 
         if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
-          const pastEvents = await container.store.listEvents(params.runId)
+          const pastEvents = await runsService.getEvents(params.runId, authUser!.id)
           const encoder = new TextEncoder()
           const stream = new ReadableStream({
             start(controller) {
@@ -197,8 +173,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/:runId',
     async ({ authUser, params, set }) => {
       try {
-        await assertRunAccess(params.runId, authUser!.id)
-        const cancelled = await container.runManager.cancelRun(params.runId)
+        const cancelled = await runsService.cancelRun(params.runId, authUser!.id)
         if (!cancelled) {
           set.status = 404
           return { code: 'NOT_FOUND', message: `Run not found or already finished: ${params.runId}` }
@@ -219,8 +194,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     '/:runId/artifacts',
     async ({ authUser, params, set }) => {
       try {
-        await assertRunAccess(params.runId, authUser!.id)
-        const artifacts = await container.artifactStore.listArtifactsByRun(params.runId)
+        const artifacts = await runsService.getArtifacts(params.runId, authUser!.id)
         return { runId: params.runId, artifacts, total: artifacts.length }
       } catch (err) {
         if (isAppError(err)) {

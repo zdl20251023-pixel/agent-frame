@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import type { ChatSession, SessionTranscript } from '@agent-frame/shared'
 import { useAuth } from '../auth/useAuth.tsx'
 import { SessionSidebar } from '../sessions/SessionSidebar.tsx'
@@ -7,8 +8,10 @@ import { ChatPage } from './ChatPage.tsx'
 
 export function ChatWorkspace() {
   const { user, logout } = useAuth()
+  const { sessionId: urlSessionId } = useParams<{ sessionId?: string }>()
+  const navigate = useNavigate()
   const [sessions, setSessions] = useState<ChatSession[]>([])
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null)
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(urlSessionId ?? null)
   const [transcript, setTranscript] = useState<SessionTranscript | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -44,6 +47,7 @@ export function ChatWorkspace() {
 
   async function handleSelectSession(sessionId: string) {
     setCurrentSessionId(sessionId)
+    navigate(`/session/${sessionId}`)
     await loadTranscript(sessionId)
   }
 
@@ -52,6 +56,7 @@ export function ChatWorkspace() {
     const list = await refreshSessions()
     setSessions(list)
     setCurrentSessionId(session.id)
+    navigate(`/session/${session.id}`)
     setTranscript({ session, runs: [] })
   }
 

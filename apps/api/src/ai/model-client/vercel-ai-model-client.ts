@@ -16,6 +16,8 @@ import { models } from '../models.js'
 import { logger } from '../../shared/observability/logger.js'
 import { now } from '../../shared/utils/id.js'
 import { AppError } from '../../shared/errors/app-error.js'
+import { usageLogger } from './usage-logger.js'
+import { env } from '../../shared/config/env.js'
 
 // ============================================================
 // VercelAIModelClient — 基于 Vercel AI SDK 的 ModelClient 实现
@@ -24,17 +26,20 @@ import { AppError } from '../../shared/errors/app-error.js'
 // - 所有 AI SDK 类型只在此文件内使用
 // - 返回值必须转换为框架自定义类型
 // - raw 字段只在 ai/ 层使用，不向外扩散
+// - 每次调用完成后写入 model_call_logs（通过 UsageLogger）
 // ============================================================
 
 function normalizeUsage(usage: {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
   promptTokens?: number
   completionTokens?: number
-  totalTokens?: number
 } | undefined): TokenUsage | undefined {
   if (!usage) return undefined
   return {
-    inputTokens: usage.promptTokens,
-    outputTokens: usage.completionTokens,
+    inputTokens: usage.inputTokens ?? usage.promptTokens,
+    outputTokens: usage.outputTokens ?? usage.completionTokens,
     totalTokens: usage.totalTokens,
   }
 }
@@ -48,15 +53,22 @@ function normalizeToolCalls(toolCalls: readonly { toolCallId: string; toolName: 
   }))
 }
 
+function safeMetaString(metadata: Record<string, unknown> | undefined, key: string): string | undefined {
+  const val = metadata?.[key]
+  return typeof val === 'string' ? val : undefined
+}
+
 export class VercelAIModelClient implements ModelClient {
   async generate(input: GenerateInput): Promise<GenerateOutput> {
     const modelDef = models[input.model]
     if (!modelDef) throw new AppError('MODEL_CALL_FAILED', `Unknown model alias: ${input.model}`)
 
-    const log = logger.child({
-      agentId: input.metadata?.agentId as string,
-      runId: input.metadata?.runId as string,
-    })
+    const runId = safeMetaString(input.metadata, 'runId')
+    const traceId = safeMetaString(input.metadata, 'traceId')
+    const agentId = safeMetaString(input.metadata, 'agentId')
+    const stepId = safeMetaString(input.metadata, 'stepId')
+
+    const log = logger.child({ agentId, runId, traceId })
     log.debug('[ModelClient] generate start', { model: input.model })
     const startMs = Date.now()
 
@@ -69,23 +81,60 @@ export class VercelAIModelClient implements ModelClient {
         maxTokens: input.maxTokens ?? modelDef.maxTokens,
       })
 
+      const latencyMs = Date.now() - startMs
       const output: GenerateOutput = {
         text: result.text,
         finishReason: result.finishReason,
         usage: normalizeUsage(result.usage),
         toolCalls: normalizeToolCalls(result.toolCalls as never),
-        raw: undefined, // 不向外扩散
+        raw: undefined,
       }
 
       log.info('[ModelClient] generate completed', {
-        latencyMs: Date.now() - startMs,
+        latencyMs,
         tokenInput: output.usage?.inputTokens,
         tokenOutput: output.usage?.outputTokens,
       })
 
+      // ─── 写入 model_call_logs ────────────────────────────────
+      if (runId && traceId && env.DATABASE_URL) {
+        usageLogger.log({
+          traceId,
+          runId,
+          stepId,
+          agentId,
+          modelAlias: input.model,
+          provider: modelDef.provider,
+          actualModel: modelDef.actualModelId,
+          inputTokens: output.usage?.inputTokens,
+          outputTokens: output.usage?.outputTokens,
+          totalTokens: output.usage?.totalTokens,
+          estimatedCostUsd: output.usage?.estimatedCostUsd,
+          latencyMs,
+          finishReason: result.finishReason,
+        })
+      }
+
       return output
     } catch (err: unknown) {
+      const latencyMs = Date.now() - startMs
       const message = err instanceof Error ? err.message : String(err)
+
+      // ─── 错误也写入 model_call_logs ──────────────────────────
+      if (runId && traceId && env.DATABASE_URL) {
+        usageLogger.log({
+          traceId,
+          runId,
+          stepId,
+          agentId,
+          modelAlias: input.model,
+          provider: modelDef.provider,
+          actualModel: modelDef.actualModelId,
+          latencyMs,
+          errorCode: 'MODEL_CALL_FAILED',
+        })
+      }
+
       throw new AppError('MODEL_CALL_FAILED', `Model generate failed: ${message}`, {
         cause: err,
         retryable: true,
@@ -97,11 +146,15 @@ export class VercelAIModelClient implements ModelClient {
     const modelDef = models[input.model]
     if (!modelDef) throw new AppError('MODEL_CALL_FAILED', `Unknown model alias: ${input.model}`)
 
-    const log = logger.child({
-      agentId: input.metadata?.agentId as string,
-      runId: input.metadata?.runId as string,
-    })
+    const runId = safeMetaString(input.metadata, 'runId')
+    const traceId = safeMetaString(input.metadata, 'traceId')
+    const agentId = safeMetaString(input.metadata, 'agentId')
+    const stepId = safeMetaString(input.metadata, 'stepId')
+
+    const log = logger.child({ agentId, runId, traceId })
     log.debug('[ModelClient] stream start', { model: input.model })
+    const startMs = Date.now()
+    let finalUsage: TokenUsage | undefined
 
     try {
       const result = streamText({
@@ -116,9 +169,10 @@ export class VercelAIModelClient implements ModelClient {
         if (part.type === 'text-delta') {
           yield { type: 'text.delta', delta: (part as any).text, timestamp: now() }
         } else if (part.type === 'finish') {
+          finalUsage = normalizeUsage((part as any).totalUsage || (part as any).usage)
           yield {
             type: 'model.completed',
-            usage: normalizeUsage(part.usage),
+            usage: finalUsage,
             timestamp: now(),
           }
         } else if (part.type === 'error') {
@@ -129,8 +183,43 @@ export class VercelAIModelClient implements ModelClient {
           }
         }
       }
+
+      const latencyMs = Date.now() - startMs
+      // ─── 写入 model_call_logs ────────────────────────────────
+      if (runId && traceId && env.DATABASE_URL) {
+        usageLogger.log({
+          traceId,
+          runId,
+          stepId,
+          agentId,
+          modelAlias: input.model,
+          provider: modelDef.provider,
+          actualModel: modelDef.actualModelId,
+          inputTokens: finalUsage?.inputTokens,
+          outputTokens: finalUsage?.outputTokens,
+          totalTokens: finalUsage?.totalTokens,
+          latencyMs,
+          finishReason: 'stop',
+        })
+      }
     } catch (err: unknown) {
+      const latencyMs = Date.now() - startMs
       const message = err instanceof Error ? err.message : String(err)
+
+      if (runId && traceId && env.DATABASE_URL) {
+        usageLogger.log({
+          traceId,
+          runId,
+          stepId,
+          agentId,
+          modelAlias: input.model,
+          provider: modelDef.provider,
+          actualModel: modelDef.actualModelId,
+          latencyMs,
+          errorCode: 'MODEL_CALL_FAILED',
+        })
+      }
+
       yield {
         type: 'model.failed',
         error: { code: 'MODEL_CALL_FAILED', message, retryable: true },
