@@ -29,6 +29,11 @@ import type { RunStore } from './runtime/stores/run-store.js'
 import { MySQLArtifactStore } from './artifacts/artifact-store.mysql.js'
 import { MemoryArtifactStore } from './artifacts/artifact-store.memory.js'
 import type { ArtifactStore } from './artifacts/artifact-store.js'
+import { ProjectsService } from './features/projects/projects.service.js'
+import { MySQLMemoryStore } from './memory/memory-store.mysql.js'
+import { MemoryMemoryStore } from './memory/memory-store.memory.js'
+import { MemoryRetriever } from './memory/memory-retriever.js'
+import type { MemoryStore } from './memory/memory.types.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -51,6 +56,9 @@ export type AppContainer = {
   workflowStore: WorkflowStore
   humanGate: HumanGateManager
   artifactVersionManager: ArtifactVersionManager
+  projectsService: ProjectsService
+  memoryStore: MemoryStore
+  memoryRetriever: MemoryRetriever
 }
 
 function createStore(): RunStore {
@@ -113,9 +121,18 @@ export function createContainer(): AppContainer {
   // ─── Artifact 版本管理 ────────────────────────────────────
   const artifactVersionManager = new ArtifactVersionManager(artifactStore)
 
-  // ─── Service 层 ──────────────────────────────────────────
+  // ─── Service 层 ──────────────────────────────────────
   const agentsService = new AgentsService(a2aRouter)
   const artifactsService = new ArtifactsService(artifactStore)
+
+  // ─── Project Service ─────────────────────────────────
+  const projectsService = new ProjectsService()
+
+  // ─── Memory 层（根据环境选择 MySQL / 内存）────────────────
+  const memoryStore: MemoryStore = env.DATABASE_URL
+    ? new MySQLMemoryStore()
+    : new MemoryMemoryStore()
+  const memoryRetriever = new MemoryRetriever(memoryStore)
 
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
@@ -136,6 +153,9 @@ export function createContainer(): AppContainer {
     workflowStore,
     humanGate,
     artifactVersionManager,
+    projectsService,
+    memoryStore,
+    memoryRetriever,
   }
 }
 

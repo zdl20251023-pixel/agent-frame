@@ -3,7 +3,7 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 2 Artifact 完善 + Workflow 轻量 MVP（已完成）→ 进入阶段 3**
+> 当前阶段：**阶段 3 Project + Memory + Session（已完成）→ 进入阶段 4**
 
 ---
 
@@ -45,13 +45,13 @@
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
-| 3.1 | `features/projects/` Project CRUD API | P2 | ❌ | — |
-| 3.2 | `shared/db/schema.ts` 新增 `projects` 表 | P2 | ❌ | — |
-| 3.3 | `packages/shared/models/project.ts` 共享类型 | P2 | ❌ | — |
-| 3.4 | `memory/memory-store.mysql.ts` MySQL 持久化 | P2 | ❌ | — |
-| 3.5 | `memory/memory-retriever.ts` 记忆召回 | P2 | ❌ | — |
-| 3.6 | `memory/memory-policy.ts` 记忆写入策略 | P3 | ❌ | — |
-| 3.7 | `features/sessions/` 完整消息归档 + Run 归属查询 | P2 | ❌ | — |
+| 3.1 | `features/projects/` Project CRUD API | P2 | ✅ | 2026-06-03 |
+| 3.2 | `shared/db/schema.ts` 新增 `projects` 表 | P2 | ✅ | 2026-06-03 |
+| 3.3 | `packages/shared/models/project.ts` 共享类型 | P2 | ✅ | 2026-06-03 |
+| 3.4 | `memory/memory-store.mysql.ts` MySQL 持久化 | P2 | ✅ | 2026-06-03 |
+| 3.5 | `memory/memory-retriever.ts` 记忆召回 | P2 | ✅ | 2026-06-03 |
+| 3.6 | `memory/memory-policy.ts` 记忆写入策略 | P3 | ✅ | 2026-06-03 |
+| 3.7 | `features/sessions/` 完整消息归档 + Run 归属查询 | P2 | ✅ | 2026-06-03 |
 
 ### 阶段 4 — 可观测性、安全与生产化（P2 / P3）
 

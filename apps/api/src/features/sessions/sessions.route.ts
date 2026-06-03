@@ -56,6 +56,18 @@ export const sessionsRoute = new Elysia({ prefix: '/sessions' })
       throw err
     }
   })
+  // GET /sessions/:sessionId/runs — Session 下所有 Run 的归属列表（完整归档）
+  .get('/:sessionId/runs', async ({ authUser, params, set }) => {
+    try {
+      return await sessionsService.listSessionRuns(authUser!.id, params.sessionId)
+    } catch (err) {
+      if (isAppError(err)) {
+        set.status = err.statusCode
+        return err.toJSON()
+      }
+      throw err
+    }
+  })
   .delete('/:sessionId', async ({ authUser, params, set }) => {
     try {
       await sessionsService.deleteSession(authUser!.id, params.sessionId)

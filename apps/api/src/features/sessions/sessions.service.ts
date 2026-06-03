@@ -87,6 +87,21 @@ export class SessionsService {
       await this.repo.updateTitle(sessionId, userId, title)
     })
   }
+
+  /**
+   * 查询 Session 下的所有 Run（用于 Run 归属展示和完整归档）
+   */
+  async listSessionRuns(
+    userId: string,
+    sessionId: string,
+  ): Promise<{ runs: unknown[]; total: number }> {
+    const session = await this.repo.getByIdForUser(sessionId, userId)
+    if (!session) throw new AppError('NOT_FOUND', 'Session not found')
+    if (!this.runStore) throw new AppError('INTERNAL_ERROR', 'RunStore not configured')
+
+    const runs = await this.runStore.listRunsBySession(sessionId, userId)
+    return { runs, total: runs.length }
+  }
 }
 
 function extractUserMessage(input: unknown): string {

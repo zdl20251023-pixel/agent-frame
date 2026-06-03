@@ -184,13 +184,56 @@ export const modelCallLogs = mysqlTable(
   ],
 )
 
+// ─── projects 表 ────────────────────────────────────────────
+// 对应 FRAMEWORK_DESIGN §20.3 Project 数据模型
+export const projects = mysqlTable(
+  'projects',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    ownerId: varchar('owner_id', { length: 36 }).notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    type: varchar('type', { length: 40 }).notNull().default('general'),
+    description: text('description'),
+    metadata: json('metadata'),
+    deletedAt: datetime('deleted_at', { mode: 'string', fsp: 3 }),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_projects_owner_id').on(table.ownerId),
+    index('idx_projects_type').on(table.type),
+  ],
+)
+
+// ─── memories 表 ─────────────────────────────────────────────
+// 对应 FRAMEWORK_DESIGN §13 memory/ 通用记忆层
+export const memories = mysqlTable(
+  'memories',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    scope: varchar('scope', { length: 20 }).notNull(), // user | session | project | agent | global
+    scopeId: varchar('scope_id', { length: 36 }).notNull(),
+    kind: varchar('kind', { length: 60 }).notNull(),   // preference | fact | summary | constraint
+    content: json('content').notNull(),
+    metadata: json('metadata'),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_memories_scope_id').on(table.scope, table.scopeId),
+    index('idx_memories_kind').on(table.kind),
+  ],
+)
+
 export type Schema = {
   users: typeof users
   chatSessions: typeof chatSessions
+  projects: typeof projects
   runs: typeof runs
   steps: typeof steps
   runEvents: typeof runEvents
   artifacts: typeof artifacts
   artifactVersions: typeof artifactVersions
   modelCallLogs: typeof modelCallLogs
+  memories: typeof memories
 }

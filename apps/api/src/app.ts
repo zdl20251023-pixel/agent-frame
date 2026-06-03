@@ -6,6 +6,8 @@ import { artifactsRoute } from './features/artifacts/artifacts.route.js'
 import { authRoute } from './features/auth/auth.route.js'
 import { sessionsRoute } from './features/sessions/sessions.route.js'
 import { workflowsRoute } from './features/workflows/workflows.route.js'
+import { projectsRoute } from './features/projects/projects.route.js'
+import { memoryRoute } from './features/memory/memory.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
 import { env } from './shared/config/env.js'
@@ -98,6 +100,8 @@ export function createApp() {
     .use(agentsRoute)
     .use(artifactsRoute)
     .use(workflowsRoute)
+    .use(projectsRoute)
+    .use(memoryRoute)
 
   return app
 }
