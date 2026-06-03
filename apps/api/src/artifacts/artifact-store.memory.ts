@@ -1,4 +1,5 @@
 import type { Artifact, ArtifactVersion } from '@agent-frame/shared'
+import { ARTIFACT_REVIEW_STATUS } from '@agent-frame/shared'
 import type {
   ArtifactStore,
   CreateArtifactInput,
@@ -48,7 +49,7 @@ export class MemoryArtifactStore implements ArtifactStore {
       createdByAgentId: input.createdByAgentId,
       parentVersionId: input.parentVersionId,
       diffSummary: input.diffSummary,
-      reviewStatus: 'pending',
+      reviewStatus: ARTIFACT_REVIEW_STATUS.PENDING,
       createdAt: now(),
     }
     this.versions.set(version.id, version)

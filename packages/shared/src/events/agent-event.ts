@@ -1,3 +1,5 @@
+import { EVENT_TYPES } from '../constants/event-types.js'
+
 // ============================================================
 // AgentEvent：所有 Run 相关事件的联合类型
 // 前后端共享，必须从 @agent-frame/shared 引用，不能各自定义
@@ -6,19 +8,19 @@
 export type AgentEvent =
   // ─── Run 生命周期事件 ─────────────────────────────────────
   | {
-      type: 'run.started'
+      type: typeof EVENT_TYPES.RUN_STARTED
       runId: string
       agentId?: string
       timestamp: string
     }
   | {
-      type: 'run.completed'
+      type: typeof EVENT_TYPES.RUN_COMPLETED
       runId: string
       agentId?: string
       timestamp: string
     }
   | {
-      type: 'run.failed'
+      type: typeof EVENT_TYPES.RUN_FAILED
       runId: string
       agentId?: string
       reason?: string
@@ -26,7 +28,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'run.cancelled'
+      type: typeof EVENT_TYPES.RUN_CANCELLED
       runId: string
       reason?: string
       timestamp: string
@@ -34,7 +36,7 @@ export type AgentEvent =
 
   // ─── 消息流事件 ──────────────────────────────────────────
   | {
-      type: 'message.delta'
+      type: typeof EVENT_TYPES.MESSAGE_DELTA
       runId: string
       agentId: string
       delta: string
@@ -43,7 +45,7 @@ export type AgentEvent =
 
   // ─── Tool 调用事件 ────────────────────────────────────────
   | {
-      type: 'tool.call'
+      type: typeof EVENT_TYPES.TOOL_CALL
       runId: string
       stepId?: string
       agentId: string
@@ -52,7 +54,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'tool.result'
+      type: typeof EVENT_TYPES.TOOL_RESULT
       runId: string
       stepId?: string
       agentId: string
@@ -63,7 +65,7 @@ export type AgentEvent =
 
   // ─── A2A 同步调用事件 ─────────────────────────────────────
   | {
-      type: 'agent.call.started'
+      type: typeof EVENT_TYPES.AGENT_CALL_STARTED
       runId: string
       traceId: string
       stepId?: string
@@ -74,7 +76,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'agent.call.completed'
+      type: typeof EVENT_TYPES.AGENT_CALL_COMPLETED
       runId: string
       traceId: string
       stepId?: string
@@ -85,7 +87,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'agent.call.failed'
+      type: typeof EVENT_TYPES.AGENT_CALL_FAILED
       runId: string
       traceId: string
       stepId?: string
@@ -97,7 +99,7 @@ export type AgentEvent =
 
   // ─── A2A 异步事件（预留，MVP 不发出）────────────────────
   | {
-      type: 'agent.call.queued'
+      type: typeof EVENT_TYPES.AGENT_CALL_QUEUED
       runId: string
       childRunId: string
       taskId: string
@@ -106,7 +108,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'agent.call.progress'
+      type: typeof EVENT_TYPES.AGENT_CALL_PROGRESS
       runId: string
       childRunId: string
       taskId: string
@@ -115,7 +117,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'agent.call.cancelled'
+      type: typeof EVENT_TYPES.AGENT_CALL_CANCELLED
       runId: string
       childRunId: string
       taskId: string
@@ -125,7 +127,7 @@ export type AgentEvent =
 
   // ─── Artifact 事件 ────────────────────────────────────────
   | {
-      type: 'artifact.created'
+      type: typeof EVENT_TYPES.ARTIFACT_CREATED
       runId: string
       artifactId: string
       artifactType: string
@@ -133,7 +135,7 @@ export type AgentEvent =
       timestamp: string
     }
   | {
-      type: 'artifact.version.created'
+      type: typeof EVENT_TYPES.ARTIFACT_VERSION_CREATED
       runId: string
       artifactId: string
       versionId: string
@@ -144,9 +146,9 @@ export type AgentEvent =
 // 判断是否为终态事件（用于 SSE 关闭连接）
 export function isTerminalEvent(event: AgentEvent): boolean {
   return (
-    event.type === 'run.completed' ||
-    event.type === 'run.failed' ||
-    event.type === 'run.cancelled'
+    event.type === EVENT_TYPES.RUN_COMPLETED ||
+    event.type === EVENT_TYPES.RUN_FAILED ||
+    event.type === EVENT_TYPES.RUN_CANCELLED
   )
 }
 

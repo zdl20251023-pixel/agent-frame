@@ -1,4 +1,5 @@
 import type { AgentInput, AgentOutput } from '@agent-frame/shared'
+import { EVENT_TYPES, STEP_TYPES, ARTIFACT_TYPES, MODEL_STREAM_EVENT_TYPES } from '@agent-frame/shared'
 import type { ModelClient } from '../model-client/model-client.js'
 import type { RunContext } from '../../runtime/run-manager.js'
 import { RunEventEmitter } from '../../runtime/event-emitter.js'
@@ -10,6 +11,7 @@ import { SUMMARY_AGENT_ID } from './agent-ids.js'
 import { SUMMARY_SYSTEM, summaryPrompt } from '../prompts/index.js'
 import { now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
+
 
 // ============================================================
 // SummaryAgent — 专业 Agent：内容总结 + 写入 Artifact
@@ -42,7 +44,7 @@ export class SummaryAgent {
     // ─── 创建 model_call Step ────────────────────────────────
     const modelStep = await this.stepManager.startStep({
       runId,
-      type: 'model_call',
+      type: STEP_TYPES.MODEL_CALL,
       agentId: this.agentId,
       input: { model: 'fast.chat', purpose: 'summary' },
     })
@@ -57,10 +59,10 @@ export class SummaryAgent {
         maxTokens: 512,
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
-        if (event.type === 'text.delta') {
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {
           fullText += event.delta
           await emitter.emit({
-            type: 'message.delta',
+            type: EVENT_TYPES.MESSAGE_DELTA,
             runId,
             agentId: this.agentId,
             delta: event.delta,
@@ -84,7 +86,7 @@ export class SummaryAgent {
       const { artifact, version } = await this.artifactStore.createArtifactWithVersion(
         {
           runId,
-          type: 'summary',
+          type: ARTIFACT_TYPES.SUMMARY,
           title: `摘要 - ${new Date().toLocaleString('zh-CN')}`,
           metadata: {
             agentId: this.agentId,
@@ -102,7 +104,7 @@ export class SummaryAgent {
       await emitter.emit(artifactCreatedEvent({
         runId,
         artifactId: artifact.id,
-        artifactType: 'summary',
+        artifactType: ARTIFACT_TYPES.SUMMARY,
         title: artifact.title,
       }))
       await emitter.emit(artifactVersionCreatedEvent({

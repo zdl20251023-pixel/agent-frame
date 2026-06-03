@@ -1,4 +1,5 @@
 import type { Run, RunStatus, Step, AgentEvent, CreateRunInput, CreateStepInput, UpdateStepInput } from '@agent-frame/shared'
+import { RUN_STATUS, STEP_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './run-store.js'
 import { now } from '../../shared/utils/id.js'
 
@@ -21,7 +22,7 @@ export class MemoryRunStore implements RunStore {
       projectId: input.projectId,
       agentId: input.agentId,
       sessionId: input.sessionId,
-      status: 'queued',
+      status: RUN_STATUS.QUEUED,
       input: input.input,
       createdAt: now(),
       updatedAt: now(),
@@ -76,7 +77,7 @@ export class MemoryRunStore implements RunStore {
       runId: input.runId,
       parentStepId: input.parentStepId,
       type: input.type,
-      status: 'running',
+      status: STEP_STATUS.RUNNING,
       agentId: input.agentId,
       fromAgentId: input.fromAgentId,
       toAgentId: input.toAgentId,
@@ -96,7 +97,7 @@ export class MemoryRunStore implements RunStore {
     this.steps.set(stepId, {
       ...step,
       ...update,
-      endedAt: update.endedAt ?? (update.status !== 'running' ? now() : step.endedAt),
+      endedAt: update.endedAt ?? (update.status !== STEP_STATUS.RUNNING ? now() : step.endedAt),
     })
   }
 

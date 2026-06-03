@@ -1,4 +1,5 @@
 import type { A2ARequest, A2AResponse, AgentEvent } from '@agent-frame/shared'
+import { EVENT_TYPES, STEP_TYPES, A2A_CALL_MODES, STEP_STATUS, A2A_STATUSES } from '@agent-frame/shared'
 import type { RunStore } from '../runtime/stores/run-store.js'
 import type { RunContext } from '../runtime/run-manager.js'
 import { RunEventEmitter } from '../runtime/event-emitter.js'
@@ -40,8 +41,8 @@ export class A2AClient {
       const appErr = err instanceof AppError ? err : new AppError('AGENT_CALL_DENIED', String(err))
       log.warn('[A2AClient] callSync denied by policy', { errorCode: appErr.code })
       return {
-        mode: 'sync',
-        status: 'failed',
+        mode: A2A_CALL_MODES.SYNC,
+        status: A2A_STATUSES.FAILED,
         error: { code: appErr.code, message: appErr.message },
         latencyMs,
       }
@@ -55,7 +56,7 @@ export class A2AClient {
     const step = await this.stepManager.startStep({
       runId,
       parentStepId: request.parentStepId,
-      type: 'agent_call',
+      type: STEP_TYPES.AGENT_CALL,
       fromAgentId: request.fromAgentId,
       toAgentId: request.toAgentId,
       input: request.input,
@@ -64,7 +65,7 @@ export class A2AClient {
 
     // ─── 4. 发出 agent.call.started ──────────────────────────
     await this.emitter.emit({
-      type: 'agent.call.started',
+      type: EVENT_TYPES.AGENT_CALL_STARTED,
       runId,
       traceId,
       stepId,
@@ -104,7 +105,7 @@ export class A2AClient {
       // ─── 8. 更新 Step、发出 completed 事件 ──────────────────
       await this.stepManager.completeStep(stepId, result.output)
       await this.emitter.emit({
-        type: 'agent.call.completed',
+        type: EVENT_TYPES.AGENT_CALL_COMPLETED,
         runId,
         traceId,
         stepId,
@@ -119,8 +120,8 @@ export class A2AClient {
       context.depth--
 
       return {
-        mode: 'sync',
-        status: 'completed',
+        mode: A2A_CALL_MODES.SYNC,
+        status: A2A_STATUSES.COMPLETED,
         output: result.output,
         latencyMs,
         usage: result.usage ? {
@@ -135,7 +136,7 @@ export class A2AClient {
 
       await this.stepManager.failStep(stepId, { code: appErr.code, message: appErr.message })
       await this.emitter.emit({
-        type: 'agent.call.failed',
+        type: EVENT_TYPES.AGENT_CALL_FAILED,
         runId,
         traceId,
         stepId,
@@ -149,8 +150,8 @@ export class A2AClient {
       context.depth--
 
       return {
-        mode: 'sync',
-        status: 'failed',
+        mode: A2A_CALL_MODES.SYNC,
+        status: A2A_STATUSES.FAILED,
         error: { code: appErr.code, message: appErr.message },
         latencyMs,
       }

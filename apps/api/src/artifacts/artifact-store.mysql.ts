@@ -1,5 +1,6 @@
 import { eq } from 'drizzle-orm'
 import type { Artifact, ArtifactVersion } from '@agent-frame/shared'
+import { ARTIFACT_REVIEW_STATUS } from '@agent-frame/shared'
 import type {
   ArtifactStore,
   CreateArtifactInput,
@@ -68,7 +69,7 @@ export class MySQLArtifactStore implements ArtifactStore {
         createdByStepId: context.stepId ?? null,
         createdByAgentId: context.agentId ?? null,
         parentVersionId: null,
-        reviewStatus: 'pending',
+        reviewStatus: ARTIFACT_REVIEW_STATUS.PENDING,
         diffSummary: null,
         createdAt: ts,
       })
@@ -126,7 +127,7 @@ export class MySQLArtifactStore implements ArtifactStore {
       createdByStepId: input.createdByStepId ?? null,
       createdByAgentId: input.createdByAgentId ?? null,
       parentVersionId: input.parentVersionId ?? null,
-      reviewStatus: 'pending',
+      reviewStatus: ARTIFACT_REVIEW_STATUS.PENDING,
       diffSummary: input.diffSummary ?? null,
       createdAt: ts,
     })

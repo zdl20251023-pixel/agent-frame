@@ -16,6 +16,8 @@ export type Artifact = {
   updatedAt: string
 }
 
+import type { ArtifactReviewStatus } from '../constants/artifact-constants.js'
+
 export type ArtifactVersion = {
   id: string
   artifactId: string
@@ -25,7 +27,8 @@ export type ArtifactVersion = {
   createdByStepId?: string
   createdByAgentId?: string
   parentVersionId?: string
-  reviewStatus?: 'pending' | 'approved' | 'rejected'
+  reviewStatus?: ArtifactReviewStatus
+
   diffSummary?: string       // 相对上一版本的变更摘要
   createdAt: string
 }

@@ -1,4 +1,5 @@
 import type { AgentEvent } from '@agent-frame/shared'
+import { EVENT_TYPES } from '@agent-frame/shared'
 import { now } from '../shared/utils/id.js'
 
 // ============================================================
@@ -11,9 +12,9 @@ export function artifactCreatedEvent(params: {
   artifactId: string
   artifactType: string
   title?: string
-}): Extract<AgentEvent, { type: 'artifact.created' }> {
+}): Extract<AgentEvent, { type: typeof EVENT_TYPES.ARTIFACT_CREATED }> {
   return {
-    type: 'artifact.created',
+    type: EVENT_TYPES.ARTIFACT_CREATED,
     runId: params.runId,
     artifactId: params.artifactId,
     artifactType: params.artifactType,
@@ -27,9 +28,9 @@ export function artifactVersionCreatedEvent(params: {
   artifactId: string
   versionId: string
   version: number
-}): Extract<AgentEvent, { type: 'artifact.version.created' }> {
+}): Extract<AgentEvent, { type: typeof EVENT_TYPES.ARTIFACT_VERSION_CREATED }> {
   return {
-    type: 'artifact.version.created',
+    type: EVENT_TYPES.ARTIFACT_VERSION_CREATED,
     runId: params.runId,
     artifactId: params.artifactId,
     versionId: params.versionId,

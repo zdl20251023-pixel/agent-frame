@@ -4,10 +4,11 @@
 // ============================================================
 
 import type { TokenUsage } from '@agent-frame/shared'
+import { MODEL_STREAM_EVENT_TYPES } from '@agent-frame/shared'
 
 export type { TokenUsage }
 
-// Tool 定义（Agent 内部工具，不用于 A2A）
+// Tool定义（Agent 内部工具，不用于 A2A）
 export type ToolDefinition = {
   name: string
   description: string
@@ -62,11 +63,11 @@ export type StreamInput = {
 
 // ─── 流式事件 ─────────────────────────────────────────────────
 export type ModelStreamEvent =
-  | { type: 'text.delta'; delta: string; timestamp: string }
-  | { type: 'tool.call'; toolCallId: string; toolName: string; input: unknown; timestamp: string }
-  | { type: 'tool.result'; toolCallId: string; toolName: string; output: unknown; timestamp: string }
-  | { type: 'model.completed'; usage?: TokenUsage; timestamp: string }
-  | { type: 'model.failed'; error: ModelError; timestamp: string }
+  | { type: typeof MODEL_STREAM_EVENT_TYPES.TEXT_DELTA; delta: string; timestamp: string }
+  | { type: typeof MODEL_STREAM_EVENT_TYPES.TOOL_CALL; toolCallId: string; toolName: string; input: unknown; timestamp: string }
+  | { type: typeof MODEL_STREAM_EVENT_TYPES.TOOL_RESULT; toolCallId: string; toolName: string; output: unknown; timestamp: string }
+  | { type: typeof MODEL_STREAM_EVENT_TYPES.MODEL_COMPLETED; usage?: TokenUsage; timestamp: string }
+  | { type: typeof MODEL_STREAM_EVENT_TYPES.MODEL_FAILED; error: ModelError; timestamp: string }
 
 // ─── 结构化生成 ───────────────────────────────────────────────
 export type GenerateObjectInput<T> = {

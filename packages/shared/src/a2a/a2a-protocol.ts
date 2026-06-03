@@ -1,8 +1,5 @@
-// ============================================================
-// A2A 协议类型
-// ============================================================
-
-export type A2ACallMode = 'sync' | 'async' | 'stream'
+import type { A2ACallMode } from '../constants/a2a-constants.js'
+import { A2A_CALL_MODES, A2A_STATUSES } from '../constants/a2a-constants.js'
 
 export type A2ARequest = {
   runId: string
@@ -19,8 +16,8 @@ export type A2ARequest = {
 
 export type A2AResponse =
   | {
-      mode: 'sync'
-      status: 'completed' | 'failed'
+      mode: typeof A2A_CALL_MODES.SYNC
+      status: typeof A2A_STATUSES.COMPLETED | typeof A2A_STATUSES.FAILED
       output?: unknown
       error?: A2AError
       latencyMs: number
@@ -31,18 +28,19 @@ export type A2AResponse =
       }
     }
   | {
-      mode: 'async'
-      status: 'accepted'
+      mode: typeof A2A_CALL_MODES.ASYNC
+      status: typeof A2A_STATUSES.ACCEPTED
       taskId: string
       childRunId: string
       eventsUrl?: string
     }
   | {
-      mode: 'stream'
-      status: 'streaming'
+      mode: typeof A2A_CALL_MODES.STREAM
+      status: typeof A2A_STATUSES.STREAMING
       streamId: string
       childRunId: string
     }
+
 
 export type A2AError = {
   code: string

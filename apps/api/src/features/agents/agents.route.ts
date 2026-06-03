@@ -1,4 +1,5 @@
 import { Elysia } from 'elysia'
+import { A2A_CALL_MODES, ARTIFACT_TYPES } from '@agent-frame/shared'
 import { container } from '../../container.js'
 import { RESEARCH_AGENT_ID } from '../../ai/agents/research.agent.js'
 import { SUMMARY_AGENT_ID } from '../../ai/agents/summary.agent.js'
@@ -17,7 +18,7 @@ const AGENT_DEFINITIONS = [
       id: SUPERVISOR_AGENT_ID,
       name: 'Task Dispatch',
       description: '分析用户任务，调度合适的专业 Agent 协作完成',
-      supportedModes: ['sync'],
+      supportedModes: [A2A_CALL_MODES.SYNC],
       costLevel: 'medium',
       maxRuntimeMs: 120000,
     },
@@ -30,11 +31,11 @@ const AGENT_DEFINITIONS = [
       id: RESEARCH_AGENT_ID,
       name: 'Research & Analysis',
       description: '对给定问题进行深度研究和分析',
-      supportedModes: ['sync'],
+      supportedModes: [A2A_CALL_MODES.SYNC],
       costLevel: 'medium',
       maxRuntimeMs: 60000,
       inputArtifactTypes: [],
-      outputArtifactTypes: ['research_report'],
+      outputArtifactTypes: [ARTIFACT_TYPES.RESEARCH_REPORT],
     },
   },
   {
@@ -45,7 +46,7 @@ const AGENT_DEFINITIONS = [
       id: SUMMARY_AGENT_ID,
       name: 'Content Summarization',
       description: '将给定内容总结为简洁摘要',
-      supportedModes: ['sync'],
+      supportedModes: [A2A_CALL_MODES.SYNC],
       costLevel: 'low',
       maxRuntimeMs: 30000,
     },

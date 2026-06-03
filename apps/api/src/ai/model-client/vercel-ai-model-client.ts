@@ -18,6 +18,7 @@ import { now } from '../../shared/utils/id.js'
 import { AppError } from '../../shared/errors/app-error.js'
 import { usageLogger } from './usage-logger.js'
 import { env } from '../../shared/config/env.js'
+import { MODEL_STREAM_EVENT_TYPES } from '@agent-frame/shared'
 
 // ============================================================
 // VercelAIModelClient — 基于 Vercel AI SDK 的 ModelClient 实现
@@ -57,6 +58,12 @@ function safeMetaString(metadata: Record<string, unknown> | undefined, key: stri
   const val = metadata?.[key]
   return typeof val === 'string' ? val : undefined
 }
+
+const AI_SDK_PART_TYPES = {
+  TEXT_DELTA: 'text-delta',
+  FINISH: 'finish',
+  ERROR: 'error',
+} as const
 
 export class VercelAIModelClient implements ModelClient {
   async generate(input: GenerateInput): Promise<GenerateOutput> {
@@ -166,18 +173,18 @@ export class VercelAIModelClient implements ModelClient {
       })
 
       for await (const part of result.fullStream) {
-        if (part.type === 'text-delta') {
-          yield { type: 'text.delta', delta: (part as any).text, timestamp: now() }
-        } else if (part.type === 'finish') {
+        if (part.type === AI_SDK_PART_TYPES.TEXT_DELTA) {
+          yield { type: MODEL_STREAM_EVENT_TYPES.TEXT_DELTA, delta: (part as any).text, timestamp: now() }
+        } else if (part.type === AI_SDK_PART_TYPES.FINISH) {
           finalUsage = normalizeUsage((part as any).totalUsage || (part as any).usage)
           yield {
-            type: 'model.completed',
+            type: MODEL_STREAM_EVENT_TYPES.MODEL_COMPLETED,
             usage: finalUsage,
             timestamp: now(),
           }
-        } else if (part.type === 'error') {
+        } else if (part.type === AI_SDK_PART_TYPES.ERROR) {
           yield {
-            type: 'model.failed',
+            type: MODEL_STREAM_EVENT_TYPES.MODEL_FAILED,
             error: { code: 'MODEL_CALL_FAILED', message: String(part.error) },
             timestamp: now(),
           }

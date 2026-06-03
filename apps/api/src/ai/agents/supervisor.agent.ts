@@ -1,4 +1,5 @@
 import type { AgentInput, AgentOutput } from '@agent-frame/shared'
+import { EVENT_TYPES, STEP_TYPES, MODEL_STREAM_EVENT_TYPES, A2A_STATUSES, A2A_CALL_MODES } from '@agent-frame/shared'
 import type { ModelClient } from '../model-client/model-client.js'
 import type { RunContext } from '../../runtime/run-manager.js'
 import { RunEventEmitter } from '../../runtime/event-emitter.js'
@@ -57,7 +58,7 @@ export class SupervisorAgent {
     // ─── Step 1：创建 model_call Step，分析任务决定调用策略 ──
     const planStep = await this.stepManager.startStep({
       runId,
-      type: 'model_call',
+      type: STEP_TYPES.MODEL_CALL,
       agentId: this.agentId,
       input: { model: 'fast.chat', purpose: 'task_planning' },
     })
@@ -90,7 +91,7 @@ export class SupervisorAgent {
     if (!plan.needsResearch && plan.directAnswer) {
       for (const char of plan.directAnswer) {
         await emitter.emit({
-          type: 'message.delta',
+          type: EVENT_TYPES.MESSAGE_DELTA,
           runId,
           agentId: this.agentId,
           delta: char,
@@ -111,13 +112,13 @@ export class SupervisorAgent {
           traceId,
           fromAgentId: SUPERVISOR_AGENT_ID,
           toAgentId: RESEARCH_AGENT_ID,
-          mode: 'sync',
+          mode: A2A_CALL_MODES.SYNC,
           input: { query: plan.researchQuery ?? payload.message },
           timeoutMs: 60000,
         },
         context,
       )
-      if (researchResponse.status === 'completed' && researchResponse.output) {
+      if (researchResponse.status === A2A_STATUSES.COMPLETED && researchResponse.output) {
         researchFindings = (researchResponse.output as { findings: string }).findings ?? ''
       }
     }
@@ -131,13 +132,13 @@ export class SupervisorAgent {
           traceId,
           fromAgentId: SUPERVISOR_AGENT_ID,
           toAgentId: SUMMARY_AGENT_ID,
-          mode: 'sync',
+          mode: A2A_CALL_MODES.SYNC,
           input: { content: researchFindings },
           timeoutMs: 30000,
         },
         context,
       )
-      if (summaryResponse.status === 'completed' && summaryResponse.output) {
+      if (summaryResponse.status === A2A_STATUSES.COMPLETED && summaryResponse.output) {
         finalContent = (summaryResponse.output as { summary: string }).summary ?? finalContent
       }
     }
@@ -145,7 +146,7 @@ export class SupervisorAgent {
     // ─── Step 5：创建 model_call Step，生成最终回答 ──────────
     const answerStep = await this.stepManager.startStep({
       runId,
-      type: 'model_call',
+      type: STEP_TYPES.MODEL_CALL,
       agentId: this.agentId,
       input: { model: 'fast.chat', purpose: 'final_answer' },
     })
@@ -158,10 +159,10 @@ export class SupervisorAgent {
         prompt: supervisorAnswerPrompt(payload.message, finalContent),
         metadata: { runId, agentId: this.agentId, traceId, stepId: answerStep.id },
       })) {
-        if (event.type === 'text.delta') {
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {
           answer += event.delta
           await emitter.emit({
-            type: 'message.delta',
+            type: EVENT_TYPES.MESSAGE_DELTA,
             runId,
             agentId: this.agentId,
             delta: event.delta,

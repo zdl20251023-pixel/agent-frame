@@ -8,6 +8,7 @@ import type {
   CreateStepInput,
   UpdateStepInput,
 } from '@agent-frame/shared'
+import { RUN_STATUS, STEP_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './run-store.js'
 import { getDb } from '../../shared/db/client.js'
 import { runs, steps, runEvents } from '../../shared/db/schema.js'
@@ -35,7 +36,7 @@ export class MySQLRunStore implements RunStore {
       projectId: input.projectId ?? null,
       agentId: input.agentId ?? null,
       sessionId: input.sessionId ?? null,
-      status: 'queued',
+      status: RUN_STATUS.QUEUED,
       input: input.input,
       output: null,
       error: null,
@@ -118,7 +119,7 @@ export class MySQLRunStore implements RunStore {
       runId: input.runId,
       parentStepId: input.parentStepId ?? null,
       type: input.type,
-      status: 'running',
+      status: STEP_STATUS.RUNNING,
       agentId: input.agentId ?? null,
       fromAgentId: input.fromAgentId ?? null,
       toAgentId: input.toAgentId ?? null,
@@ -137,7 +138,7 @@ export class MySQLRunStore implements RunStore {
   async updateStep(stepId: string, update: UpdateStepInput): Promise<void> {
     const endedAt = update.endedAt
       ? toMySQL(update.endedAt)
-      : (update.status !== 'running' ? mysqlNow() : null)
+      : (update.status !== STEP_STATUS.RUNNING ? mysqlNow() : null)
     await this.db
       .update(steps)
       .set({

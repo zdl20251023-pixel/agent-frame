@@ -1,4 +1,5 @@
 import type { AgentInput, AgentOutput } from '@agent-frame/shared'
+import { EVENT_TYPES, STEP_TYPES, MODEL_STREAM_EVENT_TYPES, ARTIFACT_TYPES } from '@agent-frame/shared'
 import type { ModelClient } from '../model-client/model-client.js'
 import type { RunContext } from '../../runtime/run-manager.js'
 import { RunEventEmitter } from '../../runtime/event-emitter.js'
@@ -41,7 +42,7 @@ export class ResearchAgent {
     // ─── 创建 model_call Step ────────────────────────────────
     const modelStep = await this.stepManager.startStep({
       runId,
-      type: 'model_call',
+      type: STEP_TYPES.MODEL_CALL,
       agentId: this.agentId,
       input: { model: 'creative.medium', purpose: 'research' },
     })
@@ -56,10 +57,10 @@ export class ResearchAgent {
         prompt: researchPrompt(payload.query),
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
-        if (event.type === 'text.delta') {
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {
           fullText += event.delta
           await emitter.emit({
-            type: 'message.delta',
+            type: EVENT_TYPES.MESSAGE_DELTA,
             runId,
             agentId: this.agentId,
             delta: event.delta,
@@ -84,7 +85,7 @@ export class ResearchAgent {
       const { artifact, version } = await this.artifactStore.createArtifactWithVersion(
         {
           runId,
-          type: 'research_report',
+          type: ARTIFACT_TYPES.RESEARCH_REPORT,
           title: `研究报告：${payload.query.slice(0, 50)}`,
           metadata: {
             agentId: this.agentId,
@@ -102,7 +103,7 @@ export class ResearchAgent {
       await emitter.emit(artifactCreatedEvent({
         runId,
         artifactId: artifact.id,
-        artifactType: 'research_report',
+        artifactType: ARTIFACT_TYPES.RESEARCH_REPORT,
         title: artifact.title,
       }))
       await emitter.emit(artifactVersionCreatedEvent({

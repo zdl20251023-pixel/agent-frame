@@ -6,6 +6,7 @@ import { logger } from '../../shared/observability/logger.js'
 import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { sessionsService } from '../sessions/sessions.service.js'
 import { RunsService } from './runs.service.js'
+import { RUN_STATUS } from '@agent-frame/shared'
 
 // ─── 初始化 Service 层 ────────────────────────────────────────
 sessionsService.setRunStore(container.store)
@@ -138,7 +139,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
 
         logger.info('[runs.route] SSE subscription started', { runId: params.runId })
 
-        if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+        if (run.status === RUN_STATUS.COMPLETED || run.status === RUN_STATUS.FAILED || run.status === RUN_STATUS.CANCELLED) {
           const pastEvents = await runsService.getEvents(params.runId, authUser!.id)
           const encoder = new TextEncoder()
           const stream = new ReadableStream({

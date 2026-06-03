@@ -1,8 +1,4 @@
-// ============================================================
-// Memory 模型（MVP 预留接口，不主动写入）
-// ============================================================
-
-export type MemoryScope = 'user' | 'session' | 'project' | 'agent' | 'global'
+import type { MemoryScope, MemoryCandidateStatus } from '../constants/memory-constants.js'
 
 export type MemoryItem = {
   id: string
@@ -26,6 +22,7 @@ export type MemoryWriteCandidate = {
   key: string
   value: unknown
   reason: string
-  status: 'pending' | 'approved' | 'rejected' | 'applied'
+  status: MemoryCandidateStatus
   createdAt: string
 }
+

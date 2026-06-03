@@ -1,4 +1,5 @@
 import type { Run, AgentInput, AgentOutput } from '@agent-frame/shared'
+import { EVENT_TYPES, RUN_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './stores/run-store.js'
 import { RunEventEmitter } from './event-emitter.js'
 import { cancellationManager } from './cancellation.js'
@@ -78,7 +79,7 @@ export class RunManager {
     logger.info('[RunManager] Run created', { runId, traceId, agentId: options.agentId })
 
     // 发出 run.started 事件
-    await this.emitter.emit({ type: 'run.started', runId, agentId: options.agentId, timestamp: now() })
+    await this.emitter.emit({ type: EVENT_TYPES.RUN_STARTED, runId, agentId: options.agentId, timestamp: now() })
 
     // 异步执行（不阻塞创建请求）
     this.executeRun(run, context, options).catch((err) => {
@@ -91,7 +92,7 @@ export class RunManager {
   private async executeRun(run: Run, context: RunContext, options: CreateRunOptions): Promise<void> {
     const { runId, traceId } = context
 
-    await this.store.updateRunStatus(runId, 'running')
+    await this.store.updateRunStatus(runId, RUN_STATUS.RUNNING)
 
     // 超时控制
     const timeout = setTimeout(() => {
@@ -115,24 +116,24 @@ export class RunManager {
 
       const result = await this.executor.execute(agentInput, context)
 
-      await this.store.updateRunStatus(runId, 'completed', { output: result.output })
-      await this.emitter.emit({ type: 'run.completed', runId, agentId: this.executor.agentId, timestamp: now() })
+      await this.store.updateRunStatus(runId, RUN_STATUS.COMPLETED, { output: result.output })
+      await this.emitter.emit({ type: EVENT_TYPES.RUN_COMPLETED, runId, agentId: this.executor.agentId, timestamp: now() })
 
       logger.info('[RunManager] Run completed', { runId, traceId })
     } catch (err: unknown) {
       const isAbort = err instanceof Error && err.name === 'AbortError'
 
       if (isAbort) {
-        await this.store.updateRunStatus(runId, 'cancelled')
-        await this.emitter.emit({ type: 'run.cancelled', runId, reason: 'cancelled by user', timestamp: now() })
+        await this.store.updateRunStatus(runId, RUN_STATUS.CANCELLED)
+        await this.emitter.emit({ type: EVENT_TYPES.RUN_CANCELLED, runId, reason: 'cancelled by user', timestamp: now() })
         logger.info('[RunManager] Run cancelled', { runId, traceId })
       } else {
         const appErr = err instanceof AppError ? err : new AppError('INTERNAL_ERROR', String(err))
-        await this.store.updateRunStatus(runId, 'failed', {
+        await this.store.updateRunStatus(runId, RUN_STATUS.FAILED, {
           error: { code: appErr.code, message: appErr.message },
         })
         await this.emitter.emit({
-          type: 'run.failed',
+          type: EVENT_TYPES.RUN_FAILED,
           runId,
           reason: appErr.message,
           errorCode: appErr.code,

@@ -14,11 +14,13 @@ export type AgentDefinition = {
   capability: AgentCapability
 }
 
+import type { A2ACallMode } from '../constants/a2a-constants.js'
+
 export type AgentCapability = {
   id: string
   name: string
   description: string
-  supportedModes: Array<'sync' | 'async' | 'stream'>
+  supportedModes: A2ACallMode[]
   inputSchema?: unknown
   outputSchema?: unknown
   inputArtifactTypes?: string[]
@@ -31,6 +33,7 @@ export type AgentCapability = {
   /** 风险级别，高风险 Agent 后续可接人工审批 */
   riskLevel?: 'low' | 'medium' | 'high'
 }
+
 
 
 // 统一 Agent 执行输入

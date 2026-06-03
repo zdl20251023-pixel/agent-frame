@@ -1,4 +1,5 @@
 import type { Step, CreateStepInput, UpdateStepInput } from '@agent-frame/shared'
+import { STEP_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './stores/run-store.js'
 import { generateStepId, now } from '../shared/utils/id.js'
 
@@ -19,7 +20,7 @@ export class StepManager {
 
   async completeStep(stepId: string, output?: unknown): Promise<void> {
     await this.store.updateStep(stepId, {
-      status: 'completed',
+      status: STEP_STATUS.COMPLETED,
       output,
       endedAt: now(),
     })
@@ -27,7 +28,7 @@ export class StepManager {
 
   async failStep(stepId: string, error: unknown): Promise<void> {
     await this.store.updateStep(stepId, {
-      status: 'failed',
+      status: STEP_STATUS.FAILED,
       error,
       endedAt: now(),
     })
@@ -35,7 +36,7 @@ export class StepManager {
 
   async cancelStep(stepId: string): Promise<void> {
     await this.store.updateStep(stepId, {
-      status: 'cancelled',
+      status: STEP_STATUS.CANCELLED,
       endedAt: now(),
     })
   }

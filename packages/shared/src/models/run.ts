@@ -1,13 +1,9 @@
+import type { StepType } from '../constants/step-types.js'
+import type { RunStatus, StepStatus } from '../constants/run-constants.js'
+
 // ============================================================
 // Run 和 Step 核心模型
 // ============================================================
-
-export type RunStatus =
-  | 'queued'
-  | 'running'
-  | 'completed'
-  | 'failed'
-  | 'cancelled'
 
 export type Run = {
   id: string           // Run 唯一 ID（ULID）
@@ -29,15 +25,6 @@ export type RunError = {
   message: string
   details?: unknown
 }
-
-export type StepType =
-  | 'model_call'
-  | 'tool_call'
-  | 'agent_call'
-  | 'artifact_create'
-  | 'workflow_stage'
-
-export type StepStatus = 'running' | 'completed' | 'failed' | 'cancelled'
 
 export type Step = {
   id: string
