@@ -16,6 +16,8 @@ import { env } from './shared/config/env.js'
 import { tracingPlugin } from './shared/observability/tracing.js'
 import { rateLimitPlugin } from './shared/middlewares/rate-limit.middleware.js'
 import { getMetricsSnapshot } from './shared/observability/metrics.js'
+import { pluginsRoute } from './features/plugins/plugins.route.js'
+import { registerBuiltinPlugins } from './plugins/builtin-plugins.js'
 
 // ============================================================
 // Elysia 应用创建和中间件注册
@@ -47,6 +49,8 @@ function sanitizeRequestBody(value: unknown): unknown {
 }
 
 export function createApp() {
+  // 注册内置插件（FRAMEWORK_DESIGN §12 — builtin-plugins.ts）
+  registerBuiltinPlugins()
   const app = new Elysia()
     .use(
       cors({
@@ -115,6 +119,7 @@ export function createApp() {
     .use(memoryRoute)
     .use(usageRoute)
     .use(wsRoute)
+    .use(pluginsRoute)
 
   return app
 }

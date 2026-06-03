@@ -94,6 +94,40 @@ export function SessionSidebar({
           ))
         )}
       </div>
+      <div style={{ padding: '8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+        {[
+          { href: '/agents', icon: '⚡', label: 'Agent 中心' },
+          { href: '/workflows', icon: '◈', label: 'Workflow' },
+        ].map(({ href, icon, label }) => (
+          <a
+            key={href}
+            href={href}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '8px 12px',
+              borderRadius: '8px',
+              color: '#6b7280',
+              fontSize: '13px',
+              textDecoration: 'none',
+              transition: 'background 0.15s, color 0.15s',
+              marginBottom: '2px',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+              e.currentTarget.style.color = '#d1d5db'
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent'
+              e.currentTarget.style.color = '#6b7280'
+            }}
+          >
+            <span>{icon}</span>
+            <span>{label}</span>
+          </a>
+        ))}
+      </div>
     </aside>
   )
 }

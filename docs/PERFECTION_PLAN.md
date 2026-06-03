@@ -3,7 +3,7 @@
 > 本文档基于 [FRAMEWORK_DESIGN.md](./FRAMEWORK_DESIGN.md) 设计目标与当前 MVP 实现，梳理后续所有待完善功能，并给出分阶段优先级排序。
 >
 > 更新日期：2026-06-03  
-> 当前阶段：**阶段 4 可观测性、安全与生产化（已完成）→ 进入阶段 5**
+> 当前阶段：**阶段 5 Plugin 扩展（已完成）→ 进入阶段 6**
 
 ---
 
@@ -68,10 +68,10 @@
 
 | # | 任务 | 优先级 | 状态 | 完成日期 |
 |---|---|---|---|---|
-| 5.1 | `plugins/plugin-context.ts` 完整 PluginContext 实现 | P3 | ❌ | — |
-| 5.2 | `plugins/builtin-plugins.ts` 内置 Agent 插件注册 | P3 | ❌ | — |
-| 5.3 | 前端 `features/agents/` Agent 列表与能力展示页 | P1 | ❌ | — |
-| 5.4 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | ❌ | — |
+| 5.1 | `plugins/plugin-context.ts` 完整 PluginContext 实现 | P3 | ✅ | 2026-06-03 |
+| 5.2 | `plugins/builtin-plugins.ts` 内置 Agent 插件注册 | P3 | ✅ | 2026-06-03 |
+| 5.3 | 前端 `features/agents/` Agent 列表与能力展示页 | P1 | ✅ | 2026-06-03 |
+| 5.4 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | ✅ | 2026-06-03 |
 
 ### 阶段 6 — 生产化与规模化（P3）
 

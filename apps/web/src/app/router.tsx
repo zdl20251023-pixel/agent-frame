@@ -2,6 +2,8 @@ import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from '../features/auth/useAuth.tsx'
 import { AuthPage } from '../features/auth/AuthPage.tsx'
 import { ChatWorkspace } from '../features/chat/ChatWorkspace.tsx'
+import { AgentsPage } from '../features/agents/AgentsPage.tsx'
+import { WorkflowsPage } from '../features/workflows/WorkflowsPage.tsx'
 
 // ============================================================
 // 路由守卫组件
@@ -79,6 +81,22 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <ChatWorkspace />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/agents',
+    element: (
+      <ProtectedRoute>
+        <AgentsPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/workflows',
+    element: (
+      <ProtectedRoute>
+        <WorkflowsPage />
       </ProtectedRoute>
     ),
   },

@@ -1,60 +1,150 @@
-import type { AgentPlugin, PluginContext, ToolDefinition, WorkflowDefinition, ArtifactTypeDefinition } from './plugin.types.js'
-import type { AgentDefinition } from '@agent-frame/shared'
+import type { AgentPlugin, PluginAgentDefinition, ToolDefinition, WorkflowDefinition, ArtifactTypeDefinition } from './plugin.types.js'
 import { logger } from '../shared/observability/logger.js'
+import { PluginContextFactory, type PluginRegistrations } from './plugin-context.js'
 
 // ============================================================
-// PluginRegistry — 插件注册和查询
-// MVP 阶段内置插件手动注册，未来可支持动态加载
+// plugins/plugin-registry.ts — 插件注册和查询（升级版）
+//
+// 设计依据：FRAMEWORK_DESIGN §12 plugins/ 插件注册层
+//
+// 升级内容（相对于原来简单版本）：
+// - 使用 PluginContextFactory 构建每个插件的独立 FullPluginContext
+// - 内部共享 PluginRegistrations 存储（一个 Map 结构）
+// - 新增 listTools / listWorkflows / listArtifactTypes 查询方法
+// - 新增 getPlugin() 查询单个插件元数据
+// - 新增生命周期钩子调用入口（callBeforeRunStart / callAfterRunComplete）
 // ============================================================
 
 export class PluginRegistry {
   private plugins = new Map<string, AgentPlugin>()
-  private agents = new Map<string, AgentDefinition>()
-  private tools = new Map<string, ToolDefinition>()
-  private workflows = new Map<string, WorkflowDefinition>()
-  private artifactTypes = new Map<string, ArtifactTypeDefinition>()
 
+  // 共享注册存储，由 PluginContextFactory 写入
+  private readonly store: PluginRegistrations = {
+    agents: new Map<string, PluginAgentDefinition>(),
+    tools: new Map<string, ToolDefinition>(),
+    workflows: new Map<string, WorkflowDefinition>(),
+    artifactTypes: new Map<string, ArtifactTypeDefinition>(),
+    lifecycleHooks: new Map(),
+  }
+
+  private readonly contextFactory = new PluginContextFactory(this.store)
+
+  /** 注册插件（幂等：同 ID 只注册一次）*/
   register(plugin: AgentPlugin): this {
     if (this.plugins.has(plugin.id)) {
       logger.warn('[PluginRegistry] Plugin already registered, skipping', { pluginId: plugin.id })
       return this
     }
 
-    const ctx: PluginContext = {
-      registerAgent: (agent) => {
-        this.agents.set(agent.id, agent)
-        logger.debug('[PluginRegistry] Agent registered', { agentId: agent.id })
-      },
-      registerTool: (tool) => {
-        this.tools.set(tool.id, tool)
-        logger.debug('[PluginRegistry] Tool registered', { toolId: tool.id })
-      },
-      registerWorkflow: (workflow) => {
-        this.workflows.set(workflow.id, workflow)
-        logger.debug('[PluginRegistry] Workflow registered', { workflowId: workflow.id })
-      },
-      registerArtifactType: (type) => {
-        this.artifactTypes.set(type.id, type)
-        logger.debug('[PluginRegistry] ArtifactType registered', { typeId: type.id })
-      },
-    }
-
+    const ctx = this.contextFactory.build(plugin)
     plugin.register(ctx)
     this.plugins.set(plugin.id, plugin)
+
     logger.info('[PluginRegistry] Plugin registered', { pluginId: plugin.id, name: plugin.name })
     return this
   }
 
-  getAgent(id: string): AgentDefinition | undefined {
-    return this.agents.get(id)
+  // ─── Agent 查询 ────────────────────────────────────────────
+
+  getAgent(id: string): PluginAgentDefinition | undefined {
+    return this.store.agents.get(id)
   }
 
-  listAgents(): AgentDefinition[] {
-    return Array.from(this.agents.values())
+  listAgents(): PluginAgentDefinition[] {
+    return Array.from(this.store.agents.values())
+  }
+
+  hasAgent(id: string): boolean {
+    return this.store.agents.has(id)
+  }
+
+  // ─── Tool 查询 ─────────────────────────────────────────────
+
+  getTool(id: string): ToolDefinition | undefined {
+    return this.store.tools.get(id)
+  }
+
+  listTools(): ToolDefinition[] {
+    return Array.from(this.store.tools.values())
+  }
+
+  // ─── Workflow 查询 ─────────────────────────────────────────
+
+  getWorkflow(id: string): WorkflowDefinition | undefined {
+    return this.store.workflows.get(id)
+  }
+
+  listWorkflows(): WorkflowDefinition[] {
+    return Array.from(this.store.workflows.values())
+  }
+
+  // ─── ArtifactType 查询 ─────────────────────────────────────
+
+  getArtifactType(id: string): ArtifactTypeDefinition | undefined {
+    return this.store.artifactTypes.get(id)
+  }
+
+  listArtifactTypes(): ArtifactTypeDefinition[] {
+    return Array.from(this.store.artifactTypes.values())
+  }
+
+  // ─── Plugin 查询 ───────────────────────────────────────────
+
+  getPlugin(id: string): AgentPlugin | undefined {
+    return this.plugins.get(id)
   }
 
   listPlugins(): AgentPlugin[] {
     return Array.from(this.plugins.values())
+  }
+
+  // ─── 生命周期钩子调用 ──────────────────────────────────────
+
+  /** 触发所有插件的 onBeforeRunStart 钩子（非阻塞，仅 fire-and-forget）*/
+  async callBeforeRunStart(runId: string, agentId: string): Promise<void> {
+    for (const [pluginId, hooks] of this.store.lifecycleHooks.entries()) {
+      if (hooks.onBeforeRunStart) {
+        try {
+          await hooks.onBeforeRunStart(runId, agentId)
+        } catch (err) {
+          logger.warn('[PluginRegistry] onBeforeRunStart hook failed', {
+            pluginId,
+            runId,
+            agentId,
+            errorCode: 'HOOK_ERROR',
+          })
+        }
+      }
+    }
+  }
+
+  /** 触发所有插件的 onAfterRunComplete 钩子（非阻塞）*/
+  async callAfterRunComplete(runId: string, agentId: string, status: string): Promise<void> {
+    for (const [pluginId, hooks] of this.store.lifecycleHooks.entries()) {
+      if (hooks.onAfterRunComplete) {
+        try {
+          await hooks.onAfterRunComplete(runId, agentId, status)
+        } catch (err) {
+          logger.warn('[PluginRegistry] onAfterRunComplete hook failed', {
+            pluginId,
+            runId,
+            agentId,
+            errorCode: 'HOOK_ERROR',
+          })
+        }
+      }
+    }
+  }
+
+  /** 摘要信息（供 /plugins 端点使用）*/
+  summary() {
+    return {
+      pluginCount: this.plugins.size,
+      agentCount: this.store.agents.size,
+      toolCount: this.store.tools.size,
+      workflowCount: this.store.workflows.size,
+      artifactTypeCount: this.store.artifactTypes.size,
+    }
   }
 }
 
