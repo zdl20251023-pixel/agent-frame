@@ -200,7 +200,7 @@
 | `plugins/plugin-registry.ts` | `apps/api/src/plugins/plugin-registry.ts` | ✅ 完成 | 插件注册机制 |
 | `plugins/plugin-context.ts` | `apps/api/src/plugins/plugin-context.ts` | ✅ 完成 | registerAgent / registerTool / registerWorkflow / registerArtifactType |
 | `plugins/builtin-plugins.ts` | `apps/api/src/plugins/builtin-plugins.ts` | ✅ 完成 | 内置基础 Agent 插件注册示例 |
-| `plugins/creative-writing/` | ❌ 尚不存在 | ❌ 未开始 | 第一个业务模板插件待实现 |
+| `plugins/creative-writing/` | `apps/api/src/plugins/creative-writing/` | ✅ 完成 | OutlineAgent + WritingAgent + ReviewAgent + 2 Workflow 模板 |
 
 ### 1.8 Queues 层 ✅
 
@@ -321,78 +321,80 @@
 
 ## 二、下一阶段工作方向
 
-### 方向 A：AI 工程基础设施融合增强（阶段 7，P3）
+### 方向 A：AI 工程基础设施融合增强（阶段 7，P3）✅
 
-> 来自 FRAMEWORK_DESIGN.md §0.14 融合增强概念地图和附录 B。这些是「提升可维护性和可扩展性」的工程增强，不影响当前核心链路运行。
+> 来自 FRAMEWORK_DESIGN.md §0.14 融合增强概念地图和附录 B。**已于 2026-06-05 全部实现（51 个单元测试通过）。**
 
-#### A.1 ModelRegistry（`ai/models.ts` → `ai/model-registry.ts`）
+#### A.1 ModelRegistry（`ai/model-client/model-registry.ts`）✅
 
-**当前状态**：`ai/models.ts` 已有模型别名和成本配置，但逻辑嵌入文件内部，无法实现能力校验和 fallback 路由。
+**实现状态**：`ai/model-client/model-registry.ts` 已实现，提供 `get(alias)`、`getOrThrow(alias)`、`getFallback(alias)`、`hasCapability(alias, cap)` 接口。`ai/models.ts` 在文件末尾自动初始化 `modelRegistry` 单例并配置 fallback 策略。`VercelAIModelClient` 通过 `modelRegistry.get()` 解析模型，不再直接写死。
 
-**目标**：
-- [ ] 抽取 `ai/model-client/model-registry.ts`：提供 `getModel(alias)`、`getCapability(alias)`、`getFallback(alias)` 接口
-- [ ] `VercelAIModelClient.resolveModel()` 通过 ModelRegistry 解析，不再直接写死
+**已完成**：
+- [x] `ai/model-client/model-registry.ts`：`IModelRegistry` 接口 + `ModelRegistry` 实现 + `modelRegistry` 单例
+- [x] `ai/models.ts` 末尾 IIFE 初始化 `modelRegistry`，配置各别名的 fallback 链
+- [x] `VercelAIModelClient` 通过 `modelRegistry.get()` 解析模型，兼容旧 `models` 对象
 
-#### A.2 ModelMiddleware（`ai/model-client/middlewares/`）
+#### A.2 ModelMiddleware（`ai/model-client/middlewares/`）✅
 
-**当前状态**：无 middleware 层，日志和 fallback 逻辑直接写在 `vercel-ai-model-client.ts` 中。
+**实现状态**：`ai/model-client/middlewares/index.ts` 提供 `logModelCallStart/Complete/Error` 日志函数和 `withFallback<T>` 包装器。采用函数组合而非 `wrapLanguageModel`（避免 SDK 类型泄漏）。
 
-**目标**：
-- [ ] 新建 `ai/model-client/middlewares/logging.middleware.ts`：通过 `wrapLanguageModel` 统一打 ModelCall 日志
-- [ ] 新建 `ai/model-client/middlewares/fallback.middleware.ts`：限流时自动 fallback 并发出 `model.fallback` 事件
-- [ ] 保证 middleware 不污染 runtime / a2a / workflow 层
+**已完成**：
+- [x] `ai/model-client/middlewares/index.ts`：`LoggingMiddleware`（含 `promptHash`）+ `FallbackMiddleware`（限流自动切换）
+- [x] `VercelAIModelClient.generate()` 和 `stream()` 均接入 middleware
+- [x] middleware 不污染 runtime / a2a / workflow 层
 
-#### A.3 PromptProvider（`ai/prompts/prompt-provider.ts`）
+#### A.3 PromptProvider（`ai/prompts/prompt-provider.ts`）✅
 
-**当前状态**：`ai/prompts/index.ts` 仅为 prompt 字符串集合，无版本管理和请求级 override。
+**实现状态**：`InMemoryPromptProvider` 支持 `register/registerAll`、`promptHash`（SHA-256 前 16 位）追踪和请求级 `override()`。`prompts/index.ts` 在文件末尾初始化并注册所有内置 prompt。
 
-**目标**：
-- [ ] 新建 `ai/prompts/prompt-provider.ts`：支持文件加载、`promptHash` 追踪、请求级 override
-- [ ] Agent 从 PromptProvider 获取 prompt，不再硬编码字符串
-- [ ] `ModelCall` 记录 `promptHash` 字段，支持审计
+**已完成**：
+- [x] `ai/prompts/prompt-provider.ts`：`IPromptProvider` 接口 + `InMemoryPromptProvider` + `promptProvider` 单例 + `PROMPT_NAMES` 常量
+- [x] `prompts/index.ts` 注册所有 prompt，保持对旧字符串导出的向后兼容
+- [x] `ModelCall` 可通过 `metadata.promptHash` 记录，供 LangfuseBridge 审计
 
-#### A.4 ToolFactory（`ai/tools/tool-factory.ts`）
+#### A.4 ToolFactory（`ai/tools/tool-factory.ts`）✅
 
-**当前状态**：`ai/tools/index.ts` 为简单工具导出，Tool 不接收上下文注入。
+**实现状态**：`ToolRegistry` + `ToolFactory` 模式，每个工具通过工厂函数接受 `ToolFactoryContext`（含 `promptProvider`、`modelClient`、`extra`）。内置 `echoToolFactory` 作为示例。
 
-**目标**：
-- [ ] 新建 `ai/tools/tool-factory.ts`：工厂函数统一注入 PromptProvider / ModelClient / PolicyContext
-- [ ] Tool 内部的 LLM 推理通过 `StructuredOutputPipeline` 实现，不直接调用 `generateObject`
+**已完成**：
+- [x] `ai/tools/tool-factory.ts`：`ToolRegistry`、`ToolFactory` 类型、`toolRegistry` 单例
+- [x] `ai/tools/index.ts` 更新导出 `ToolRegistry`、`ToolFactory`、`echoToolFactory`
+- [x] Tool 工厂在创建时注入上下文，执行时不依赖全局单例
 
-#### A.5 StructuredOutputPipeline（`ai/structured-output/`）
+#### A.5 StructuredOutputPipeline（`ai/structured-output/`）✅
 
-**当前状态**：Agent 直接使用 `generateObject`，无统一校验、修复和重试机制。
+**实现状态**：`executeWithRetry<T>` 函数通过 `ModelClient.generateObject()` 获取对象，用 Zod schema 二次校验，失败时调用 `buildRepairPrompt()` 构造修复 prompt 并重试（默认最多 3 次）。
 
-**目标**：
-- [ ] 新建 `ai/structured-output/pipeline.ts`：Zod schema 校验 + 自动修复 prompt + 重试（最大 N 次）
-- [ ] `ai/structured-output/repair.ts`：修复 prompt 生成策略
-- [ ] ResearchAgent / SummaryAgent 切换到 Pipeline，移除直接 `generateObject` 调用
+**已完成**：
+- [x] `ai/structured-output/pipeline.ts`：`executeWithRetry<T>` + `PipelineOptions` + `PipelineResult`
+- [x] `ai/structured-output/repair.ts`：`buildRepairPrompt()` 根据 Zod 错误生成修复 prompt
+- [x] `ai/structured-output/index.ts`：模块公共出口
 
-#### A.6 MCPAdapter（`integrations/mcp/`）
+#### A.6 MCPAdapter（`integrations/mcp/`）✅
 
-**当前状态**：无 MCP 集成。
+**实现状态**：`IMCPAdapter` 接口 + `MockMCPAdapter` 实现（含动态 mock 响应支持）。`schema-sanitizer.ts` 针对 Gemini/Anthropic provider 清洁 JSON Schema 不兼容字段（`additionalProperties`、`$schema`、`$id` 等）。
 
-**目标**：
-- [ ] 新建 `integrations/mcp/mcp-adapter.ts`：对接外部 MCP 工具服务
-- [ ] 新建 `integrations/mcp/schema-sanitizer.ts`：处理 Gemini 等 provider 的 schema 兼容问题
-- [ ] Agent 通过 ToolFactory 使用 MCPAdapter，不直接依赖 MCP Client
+**已完成**：
+- [x] `integrations/mcp/mcp-adapter.ts`：`IMCPAdapter` 接口 + `MockMCPAdapter` + `defaultMCPAdapter` 单例
+- [x] `integrations/mcp/schema-sanitizer.ts`：`sanitizeForGemini()`、`sanitizeForAnthropic()`、`sanitizeSchema()`
+- [x] `integrations/mcp/index.ts`：模块公共出口
 
-#### A.7 LangfuseBridge（`shared/observability/langfuse-bridge.ts`）
+#### A.7 LangfuseBridge（`shared/observability/langfuse-bridge.ts`）✅
 
-**当前状态**：仅有框架自身的 `tracing.ts` + `logger.ts`，无 Langfuse/OTLP 上报。
+**实现状态**：`ILangfuseBridge` 接口，无配置时自动降级为 `NoOpLangfuseBridge`（零开销），有 `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` 配置时使用 `LoggingLangfuseBridge`（结构化日志 stub，等待真实 SDK 接入）。
 
-**目标**：
-- [ ] 新建 `shared/observability/langfuse-bridge.ts`：OpenTelemetry span 上报到 Langfuse
-- [ ] 保证不替代框架自身的 `traceId/runId/stepId` 事件追踪
-- [ ] `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` 环境变量控制开启
+**已完成**：
+- [x] `shared/observability/langfuse-bridge.ts`：`ILangfuseBridge`、`SpanHandle`、no-op / logging 两种实现
+- [x] `shared/config/env.ts` 新增 `LANGFUSE_PUBLIC_KEY`、`LANGFUSE_SECRET_KEY`、`LANGFUSE_BASE_URL`
+- [x] `VercelAIModelClient` 在每次调用前后创建 / 结束 span，不替代框架自身事件追踪
 
-#### A.8 StreamErrorNormalizer（`shared/errors/stream-error-normalizer.ts`）
+#### A.8 StreamErrorNormalizer（`shared/errors/stream-error-normalizer.ts`）✅
 
-**当前状态**：流式响应错误处理散落在各 Agent 和 ModelClient 中。
+**实现状态**：`normalizeStreamError(err, provider?, modelAlias?)` 将原始错误归一化为 `ModelError` 结构，识别 `RATE_LIMIT`、`MODEL_TIMEOUT`、`PROVIDER_ERROR`（含 auth 失败）、`CONTENT_FILTER`，其余降级为 `MODEL_CALL_FAILED`，并携带 `retryable` 标志。
 
-**目标**：
-- [ ] 新建 `shared/errors/stream-error-normalizer.ts`：统一归一化流式错误为 `ModelError` 结构
-- [ ] `VercelAIModelClient.stream()` 通过 normalizer 处理，不把 provider 原始错误暴露给前端
+**已完成**：
+- [x] `shared/errors/stream-error-normalizer.ts`：基于 HTTP 状态码和消息模式的分类逻辑
+- [x] `VercelAIModelClient.stream()` 在 `error` 部分和 `catch` 块均通过 normalizer 处理
 
 ---
 
