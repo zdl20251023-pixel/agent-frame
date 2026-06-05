@@ -49,6 +49,12 @@ export const env = {
   // 开发模式
   isDev: optionalEnv('NODE_ENV', 'development') === 'development',
   isProd: process.env.NODE_ENV === 'production',
+
+  // 可观测性（可选）
+  // 配置后 LangfuseBridge 自动激活，未配置则为 no-op
+  LANGFUSE_PUBLIC_KEY: process.env.LANGFUSE_PUBLIC_KEY ?? '',
+  LANGFUSE_SECRET_KEY: process.env.LANGFUSE_SECRET_KEY ?? '',
+  LANGFUSE_BASE_URL: optionalEnv('LANGFUSE_BASE_URL', 'https://cloud.langfuse.com'),
 } as const
 
 export function validateEnv() {

@@ -2,14 +2,17 @@ import { openai } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { google } from '@ai-sdk/google'
 import { deepseek } from '@ai-sdk/deepseek'
+import { env } from '../shared/config/env.js'
+import { modelRegistry } from './model-client/model-registry.js'
 import type { ModelDef } from './providers.js'
 
 // ============================================================
 // 模型别名注册表
 // 上层 Agent 使用别名（如 fast.chat），不使用 provider model id
+//
+// 变更：同时初始化 ModelRegistry 单例（7.1 融合增强）
+// ModelRegistry 提供 get() / getFallback() / hasCapability() 接口
 // ============================================================
-
-import { env } from '../shared/config/env.js'
 
 // 根据环境变量动态选择默认模型，偏好顺序：DeepSeek -> Gemini -> OpenAI -> Anthropic
 let defaultFastModel: any = openai('gpt-4o-mini')
@@ -133,3 +136,23 @@ export const models: Record<string, ModelDef> = {
     costLevel: 'low',
   },
 }
+
+// ─── 初始化 ModelRegistry（7.1 融合增强）─────────────────────────
+// 将 models Record 注册到 ModelRegistry 单例，供 VercelAIModelClient 使用
+// Fallback 策略：fast.chat → default，claude.medium → fast.chat
+;(function initModelRegistry() {
+  for (const [alias, def] of Object.entries(models)) {
+    modelRegistry.register(alias, {
+      ...def,
+      capabilities: ['streaming', 'structured-output', 'tool-calling'],
+      fallbackAlias:
+        alias === 'creative.medium' ? 'fast.chat' :
+        alias === 'reasoning.high' ? 'creative.medium' :
+        alias === 'claude.medium' ? 'fast.chat' :
+        alias === 'claude.fast' ? 'fast.chat' :
+        alias === 'deepseek.reasoner' ? 'deepseek.chat' :
+        alias === 'gemini.pro' ? 'gemini.flash' :
+        undefined,
+    })
+  }
+})()

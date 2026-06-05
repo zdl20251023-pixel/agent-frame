@@ -1,7 +1,14 @@
 // ============================================================
 // Prompt 模板统一管理
 // 原则：Prompt 集中维护，方便 A/B 测试、版本迭代和复用
+//
+// 融合增强（阶段 7）：
+// - 在文件末尾初始化 PromptProvider 单例，注册所有 prompt
+// - Agent 可通过 promptProvider.get(PROMPT_NAMES.xxx) 获取带 hash 的 prompt
+// - 保持对旧字符串导出的完全兼容（不破坏现有 Agent 代码）
 // ============================================================
+
+import { promptProvider, PROMPT_NAMES } from './prompt-provider.js'
 
 // ─── Supervisor Agent Prompts ────────────────────────────────
 
@@ -43,3 +50,32 @@ export const SUMMARY_SYSTEM = `你是一位专业的内容编辑。
 export function summaryPrompt(content: string): string {
   return `请对以下内容进行总结：\n\n${content}`
 }
+
+// ─── 初始化 PromptProvider 单例（阶段 7 融合增强）───────────────
+// 注册所有 prompt，Agent 通过 promptProvider.get(name) 获取带 hash 的 prompt
+
+promptProvider.registerAll([
+  {
+    name: PROMPT_NAMES.SUPERVISOR_PLAN_SYSTEM,
+    version: '1.0.0',
+    content: SUPERVISOR_PLAN_SYSTEM,
+  },
+  {
+    name: PROMPT_NAMES.SUPERVISOR_ANSWER_SYSTEM,
+    version: '1.0.0',
+    content: SUPERVISOR_ANSWER_SYSTEM,
+  },
+  {
+    name: PROMPT_NAMES.RESEARCH_SYSTEM,
+    version: '1.0.0',
+    content: RESEARCH_SYSTEM,
+  },
+  {
+    name: PROMPT_NAMES.SUMMARY_SYSTEM,
+    version: '1.0.0',
+    content: SUMMARY_SYSTEM,
+  },
+])
+
+// 导出 PromptProvider 供 Agent 使用（可选，Agent 可继续用字符串方式）
+export { promptProvider, PROMPT_NAMES } from './prompt-provider.js'

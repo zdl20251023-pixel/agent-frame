@@ -1,5 +1,15 @@
 # Agent Frame 框架设计（A2A + Workflow + Artifact 可扩展版）
 
+
+> **零删除融合版说明**  
+> 本文档以原《Agent Frame 框架设计（A2A + Workflow + Artifact 可扩展版）》为不可变基底：原方案一正文、章节、表格、代码块、Mermaid 图和附录均保留。本文只做三类增强：  
+> 1. 在原有合理位置嵌入方案二中已验证的优秀工程实践。  
+> 2. 把方案二的业务实现经验抽象为通用框架能力，而不是把 `poker-coach` 业务直接塞进核心框架。  
+> 3. 在文末追加融合索引、章节保留校验表和实现优先级建议。  
+>
+> **融合原则**：不删除原章节、不反转原结论、不破坏原架构边界、不引入过早复杂度。方案二能力只作为 `ai/`、`shared/observability/`、`shared/realtime/`、`features/sessions/`、`integrations/mcp/`、`structured-output/` 等模块的工程增强。
+
+
 > 当前定位：面向 MVP 阶段的通用 Agent 后端框架。  
 > 默认技术栈：**TypeScript + Bun + Elysia + Vercel AI SDK + React + Vite**。  
 > 核心目标：先支持 A2A 双 Agent / 多 Agent 调用 MVP，同时为未来扩展到小说创作、短剧制作、短视频生产、数据分析、自动办公等复杂链路预留通用能力。  
@@ -320,6 +330,46 @@ flowchart TD
 | Workflow Stage | Workflow 中的一个执行阶段，可以由 Agent、Tool 或人工节点完成 |
 | Child Run | 异步 A2A 或子任务执行时，由父 Run 派生出的子 Run |
 | TaskId | 异步任务在队列或 Worker 系统中的追踪 ID |
+
+
+### 0.14 融合增强概念地图：把方案二经验沉淀为框架基础设施
+
+本零删除融合版在原有核心概念之上，额外吸收方案二中已经落地验证的工程实践，但这些能力不会改变框架主线。它们的定位如下：
+
+| 新增/增强概念 | 来源经验 | 在本框架中的正确归属 | 不应该做成什么 |
+|---|---|---|---|
+| `ModelRegistry` | 方案二集中管理模型、默认模型、能力标记和 fallback | `apps/api/src/ai/models.ts`、`model-registry.ts` | 不应该让前端或业务 service 直接拿 provider model instance |
+| `ModelMiddleware` | 方案二通过 `wrapLanguageModel` 做日志和 fallback | `ai/model-client/middlewares/` | 不应该污染 runtime / a2a / workflow |
+| `PromptProvider` | 方案二支持运行时 prompt 覆盖和请求级隔离 | `ai/prompts/` | 不应该把 prompt 字符串硬编码进 Agent 或 Tool |
+| `ToolFactory` | 方案二工具通过工厂函数接收 PromptProvider | `ai/tools/` | 不应该让 Tool 自己读取全局 prompt 或全局状态 |
+| `StructuredOutputPipeline` | 方案二结构化输出、Zod 校验、修复和重试 | `ai/structured-output/`、`packages/shared/schemas/` | 不应该只依赖自由文本 JSON parse |
+| `MCPAdapter` | 方案二通过 MCP 接外部工具服务并处理 schema 兼容 | `integrations/mcp/` 或 `ai/tools/mcp/` | 不应该让 Agent 直接依赖 MCP client |
+| `LangfuseBridge` | 方案二使用 OpenTelemetry + Langfuse 做链路追踪 | `shared/observability/` | 不应该替代框架自己的 `traceId/runId/stepId` |
+| `SessionHistoryStore` | 方案二用 Redis 存聊天历史 7 天 TTL | `features/sessions/` | 不应该替代 RunStore / EventStore / ArtifactStore |
+| `StreamErrorNormalizer` | 方案二统一处理流式响应错误 | `shared/realtime/`、`shared/errors/` | 不应该把 provider 原始错误直接返回前端 |
+
+融合后的主线保持不变：
+
+```txt
+用户请求
+  -> Run / Step / Event 追踪
+  -> Agent Runtime 执行
+  -> ModelClient 调用模型
+  -> ModelRegistry 选择模型和 fallback
+  -> PromptProvider 提供版本化 prompt
+  -> ToolFactory 构建工具
+  -> StructuredOutputPipeline 校验结构化输出
+  -> A2A / Workflow / Artifact / Memory / Policy 扩展
+  -> OpenTelemetry + Langfuse + 自有 EventStore 可观测
+```
+
+关键判断：
+
+- 方案二的能力是 **AI 工程基础设施增强**，不是替代方案一的框架核心。
+- `poker-coach` 这类业务实现经验应抽象为工具、schema、prompt、structured-output pipeline，而不是进入 `runtime/` 或 `a2a/`。
+- MVP 阶段建议先实现 `ModelRegistry + PromptProvider + ToolFactory + StructuredOutputPipeline` 的轻量版本，再逐步接 MCP、Langfuse 和复杂 fallback。
+
+
 
 ---
 
@@ -814,6 +864,258 @@ Agent / Workflow / A2A
 
 这样既能快速利用 Vercel AI SDK 的模型调用、流式输出和 Tool Calling 能力，又不会让框架核心被第三方 SDK 锁死。
 
+
+#### 4.4.11 融合增强：ModelRegistry 不替代 ModelClient，而是服务于 ModelClient
+
+方案二中 `MODEL_REGISTRY` 的价值在于集中管理模型实例、默认模型、模型能力、fallback 链和调试中间件。融合到本框架后，推荐关系如下：
+
+```txt
+Agent / Tool / Workflow
+  -> ModelClient 接口
+  -> ModelRouter / ModelRegistry
+  -> Provider Adapter
+  -> Vercel AI SDK / OpenAI SDK / Gemini SDK / 内部模型网关
+```
+
+也就是说：
+
+- `ModelClient` 是上层依赖的稳定接口。
+- `ModelRegistry` 是 `ModelClient` 内部的模型选择和能力发现机制。
+- `Provider Adapter` 才直接持有 Vercel AI SDK 的模型实例。
+- Runtime、A2A、Workflow、Artifact、Memory、Policy 永远不直接依赖 `LanguageModel`、`streamText`、`generateText` 等 SDK 类型。
+
+推荐类型：
+
+```ts
+export type ModelCapability = {
+  reasoning?: boolean
+  vision?: boolean
+  voiceInput?: boolean
+  toolCalling?: boolean
+  structuredOutput?: boolean
+  streaming?: boolean
+}
+
+export type ModelRegistryItem = {
+  id: string
+  displayName: string
+  provider: 'openai' | 'anthropic' | 'google' | 'qwen' | 'internal'
+  actualModel: string
+  isDefault?: boolean
+  capabilities: ModelCapability
+  costLevel: 'low' | 'medium' | 'high'
+  latencyLevel?: 'low' | 'medium' | 'high'
+  contextWindowTokens?: number
+  fallbackIds?: string[]
+  providerOptions?: Record<string, unknown>
+}
+```
+
+MVP 阶段最小实现：
+
+```ts
+export interface ModelRegistry {
+  getDefaultModel(): ModelRegistryItem
+  getModelById(id?: string): ModelRegistryItem
+  listModels(): ModelRegistryItem[]
+  assertCapability(modelId: string, capability: keyof ModelCapability): void
+}
+```
+
+#### 4.4.12 融合增强：模型 fallback 应放在 ModelClient 内部，而不是业务 Agent 内部
+
+方案二里模型 fallback 的经验非常有价值，尤其是当 provider 返回 `429`、`503` 或网络波动时。但融合到框架后，fallback 应由 `ModelClient` 统一处理，Agent 不应该自己写 fallback 逻辑。
+
+推荐策略：
+
+| 场景 | 处理方式 | 是否记录事件 |
+|---|---|---|
+| 主模型限流 | 尝试 fallback 模型 | 记录 `model.fallback.started` / `model.fallback.completed` |
+| 主模型不可用 | 尝试同能力模型 | 记录 provider、actualModel、retryCount |
+| fallback 全部失败 | 返回 `MODEL_CALL_FAILED` | 记录 `model.failed` 和 `run.failed` 或 step failed |
+| 模型不支持结构化输出 | 在调用前阻断 | 返回 `MODEL_CAPABILITY_MISMATCH` |
+
+示例事件：
+
+```ts
+export type ModelFallbackEvent = {
+  type: 'model.fallback.started' | 'model.fallback.completed' | 'model.fallback.failed'
+  runId: string
+  stepId?: string
+  traceId: string
+  fromModel: string
+  toModel?: string
+  reason: 'rate_limited' | 'unavailable' | 'timeout' | 'provider_error'
+  retryCount: number
+  timestamp: string
+}
+```
+
+#### 4.4.13 融合增强：PromptProvider 作为 prompt 基础设施，而不是业务调试特性
+
+方案二的 PromptProvider 设计可以直接升级为框架级 prompt 管理能力。推荐原则：
+
+1. Prompt 文件从 Markdown 加载，但运行时暴露为结构化 `PromptDescriptor`。
+2. 默认 prompt 走全局只读实例，避免每次请求重复读取文件。
+3. 调试覆盖走请求级 `PromptContext`，避免污染其他请求。
+4. 每次模型调用记录 `promptId`、`promptVersion`、`promptHash`，方便复盘。
+5. 高风险生产环境下，prompt 覆盖必须受权限控制。
+
+推荐类型：
+
+```ts
+export type PromptDescriptor = {
+  id: string
+  module: 'system' | 'agent' | 'tool' | 'workflow' | 'review' | 'data' | 'chat'
+  name: string
+  version: string
+  source: 'file' | 'db' | 'override'
+  value: string
+  hash: string
+  metadata?: Record<string, unknown>
+}
+
+export interface PromptProvider {
+  getPrompt(id: string): PromptDescriptor
+  listPrompts(module?: string): PromptDescriptor[]
+  withOverrides(overrides: Record<string, string>): PromptProvider
+}
+```
+
+#### 4.4.14 融合增强：ToolFactory 统一接收 PromptProvider、ModelClient、PolicyContext
+
+方案二所有工具通过工厂函数创建，避免 prompt 硬编码。这一经验应作为框架约束保留。
+
+推荐工具工厂签名：
+
+```ts
+export type ToolFactoryContext = {
+  promptProvider: PromptProvider
+  modelClient: ModelClient
+  policyContext: PolicyContext
+  logger: Logger
+}
+
+export type AgentToolFactory = (ctx: ToolFactoryContext) => ToolDefinition
+```
+
+这样工具可以安全访问：
+
+- 当前请求的 prompt 覆盖。
+- 统一模型调用能力。
+- 当前用户、Agent、Run 的权限上下文。
+- 结构化日志与 trace。
+
+禁止：
+
+```txt
+Tool 内部直接 import 全局 prompt
+Tool 内部直接调用底层 provider SDK
+Tool 内部绕过 Policy 调用高风险外部服务
+Tool 内部把大结果直接塞进 message 而不是 Artifact
+```
+
+#### 4.4.15 融合增强：StructuredOutputPipeline 作为 Artifact 和 A2A 的可信输出前置层
+
+方案二中自然语言转结构化牌谱的流程，本质上是一个通用的“结构化输出可信化 pipeline”。融合后应抽象为：
+
+```txt
+LLM 结构化输出
+  -> Schema 校验
+  -> 自动修复
+  -> 领域规则校验
+  -> 可选业务引擎回放 / 外部校验
+  -> 失败反馈重试
+  -> 归一化
+  -> 写入 ArtifactVersion 或作为 A2AResponse.output
+```
+
+推荐接口：
+
+```ts
+export type StructuredOutputPipeline<T> = {
+  id: string
+  schema: unknown
+  maxRetries: number
+  generate: (input: StructuredGenerateInput) => Promise<unknown>
+  validateSchema: (raw: unknown) => Promise<T>
+  autoFix?: (value: T) => Promise<T>
+  validateDomain?: (value: T) => Promise<DomainValidationResult>
+  normalize?: (value: T) => Promise<T>
+}
+```
+
+应用位置：
+
+| 场景 | 是否使用 StructuredOutputPipeline |
+|---|---|
+| Agent 输出 Artifact | 强烈建议 |
+| A2A 调用返回结构化结果 | 强烈建议 |
+| Workflow Stage 输出 | 强烈建议 |
+| 普通聊天文本 | 不强制 |
+| Tool 参数转换 | 可选 |
+
+#### 4.4.16 融合增强：MCP 作为 Tool Provider，不作为 Agent Runtime 依赖
+
+方案二 MCP 集成经验应融入工具层。推荐边界：
+
+```txt
+Agent
+  -> ToolRegistry
+  -> MCPToolProvider
+  -> MCP Client
+  -> 外部 MCP Server
+```
+
+约束：
+
+- Runtime 不知道 MCP。
+- A2A 不知道 MCP。
+- Agent 只看到标准 ToolDefinition。
+- MCP schema 兼容处理在 `MCPToolProvider` 内完成。
+- MCP 工具执行前后必须记录 `tool.call` / `tool.result` / `tool.failed`。
+
+推荐目录：
+
+```txt
+apps/api/src/integrations/mcp/
+├─ mcp-client.ts
+├─ mcp-tool-provider.ts
+├─ schema-sanitizer.ts
+├─ coercion.ts
+└─ mcp.types.ts
+```
+
+#### 4.4.17 融合增强：AI SDK UIMessage 只能作为 Session 适配格式
+
+方案二使用 Redis 保存 `UIMessage[]`，这是聊天体验里的有效做法。但在本框架中，`UIMessage[]` 不能成为核心状态格式。
+
+正确边界：
+
+| 数据 | 推荐存储 | 生命周期 | 说明 |
+|---|---|---|---|
+| Chat UI 消息 | Redis / MySQL session messages | 短中期 | 用于继续对话 |
+| Run | RunStore | 长期可审计 | 一次执行实例 |
+| Step | StepStore | 长期可审计 | 执行细节 |
+| Event | EventStore | 长期或按策略归档 | Timeline / replay |
+| Artifact | ArtifactStore | 长期 | 可复用产物 |
+| Memory | MemoryStore | 长期但需治理 | 项目/用户/Agent 记忆 |
+
+#### 4.4.18 融合增强：方案二经验的最终落位
+
+| 方案二经验 | 融合后模块 | MVP 是否实现 | 原因 |
+|---|---|---|---|
+| ModelRegistry | `ai/model-client` | 是 | 控制模型选择、fallback、能力匹配 |
+| PromptProvider | `ai/prompts` | 是 | 支持调试、版本化、复盘 |
+| ToolFactory | `ai/tools` | 是 | 避免工具硬编码 prompt 和全局依赖 |
+| Structured Output | `ai/structured-output` | 是，轻量版 | 保证 Artifact / A2A 输出可信 |
+| MCP | `integrations/mcp` | 可选 | 等外部工具服务稳定后接入 |
+| Langfuse | `shared/observability` | MVP 后期 | 先保证自有 trace 字段完整 |
+| Redis Session History | `features/sessions` | 是，轻量版 | 保证聊天连续性，但不替代 RunStore |
+| Stream Error Handler | `shared/realtime` | 是 | 改善用户体验和错误定位 |
+
+
+
 ---
 
 ## 5. 总体架构
@@ -927,6 +1229,81 @@ apps/api/src/
    ├─ utils/
    └─ types/
 ```
+
+
+### 6.1 融合增强后的后端目录补充
+
+在不改变原有目录结构的前提下，建议补充以下子目录，用于承接方案二中的成熟工程实践：
+
+```txt
+apps/api/src/
+├─ ai/
+│  ├─ model-client/
+│  │  ├─ model-client.ts
+│  │  ├─ vercel-ai-model-client.ts
+│  │  ├─ model-registry.ts          # 融合方案二 ModelRegistry
+│  │  ├─ model-router.ts            # 模型别名、能力匹配、fallback 路由
+│  │  └─ middlewares/
+│  │     ├─ debug.middleware.ts      # 调试日志，注意脱敏
+│  │     └─ fallback.middleware.ts   # provider fallback
+│  ├─ prompts/
+│  │  ├─ prompt-provider.ts          # 融合方案二 PromptProvider
+│  │  ├─ prompt-context.ts           # AsyncLocalStorage 请求级覆盖
+│  │  ├─ prompt-loader.ts            # Markdown / DB 加载
+│  │  └─ prompt-hash.ts              # promptHash 计算
+│  ├─ structured-output/
+│  │  ├─ pipeline.ts                 # Schema 校验 + 修复 + 重试
+│  │  ├─ retry.ts
+│  │  ├─ validators.ts
+│  │  └─ normalizers.ts
+│  └─ tools/
+│     ├─ tool-factory.ts             # 工具工厂上下文
+│     └─ tool-registry.ts
+│
+├─ integrations/
+│  └─ mcp/
+│     ├─ mcp-client.ts
+│     ├─ mcp-tool-provider.ts
+│     ├─ schema-sanitizer.ts
+│     └─ coercion.ts
+│
+├─ features/
+│  └─ sessions/
+│     ├─ session-history-store.ts    # Redis / MySQL 会话历史
+│     ├─ ui-message-adapter.ts       # UIMessage 与框架消息格式适配
+│     └─ session-summary.service.ts  # 后续上下文压缩
+│
+└─ shared/
+   ├─ observability/
+   │  ├─ langfuse.ts                 # Langfuse bridge
+   │  ├─ otel.ts                     # OpenTelemetry 初始化
+   │  └─ span-context.ts             # traceId/runId/stepId 注入
+   └─ realtime/
+      ├─ stream-error-normalizer.ts  # 流式响应错误归一化
+      └─ ui-stream-adapter.ts        # AI SDK stream 到 AgentEvent
+```
+
+这些目录是对原架构的自然扩展，不改变原有依赖方向：
+
+```txt
+features -> runtime / ai / sessions
+runtime -> a2a / ai interface / events
+a2a -> ai agent adapter / policy
+ai -> model providers / tools / prompts / structured output
+integrations -> 外部系统适配
+shared -> 基础设施
+```
+
+禁止反向依赖：
+
+```txt
+runtime 不依赖 integrations/mcp
+workflow 不依赖 Vercel AI SDK
+artifacts 不依赖 PromptProvider
+memory 不依赖 UIMessage
+```
+
+
 
 ---
 
@@ -1433,6 +1810,189 @@ export type AgentCapability = {
 }
 ```
 
+
+### 14.4 融合增强：AI 能力层的完整工程分层
+
+融合方案二后，`ai/` 不再只是 Agent、Tool、Prompt 的简单集合，而是承担完整 AI 工程基础设施职责。但它仍然不能接管 Runtime、A2A、Workflow、Artifact、Memory、Policy 的职责。
+
+推荐分层：
+
+```txt
+ai/
+  agents/                  # Agent 定义，依赖 ModelClient、ToolRegistry、PromptProvider
+  orchestration/           # Supervisor、handoff、parallel 等策略
+  model-client/            # 模型调用抽象和 provider 适配
+  models/                  # 模型注册、能力、成本、fallback
+  prompts/                 # prompt 加载、版本、覆盖、hash
+  tools/                   # 工具定义、工厂、注册、执行适配
+  structured-output/       # 结构化输出、校验、修复、重试、归一化
+  mcp-adapters/            # 可选：MCP 工具适配，也可放 integrations/mcp
+```
+
+### 14.5 ModelRegistry 设计
+
+`ModelRegistry` 的职责不是调用模型，而是回答：
+
+- 当前有哪些模型可用？
+- 默认模型是谁？
+- 某个模型支持哪些能力？
+- 某个任务应该使用哪个模型别名？
+- 主模型失败时 fallback 到谁？
+- 该模型的成本和上下文窗口是多少？
+
+推荐实现：
+
+```ts
+export class InMemoryModelRegistry implements ModelRegistry {
+  constructor(private readonly items: ModelRegistryItem[]) {}
+
+  getDefaultModel() {
+    const model = this.items.find(item => item.isDefault)
+    if (!model) throw new AppError('MODEL_NOT_FOUND', 'Default model not configured')
+    return model
+  }
+
+  getModelById(id?: string) {
+    if (!id) return this.getDefaultModel()
+    return this.items.find(item => item.id === id) ?? this.getDefaultModel()
+  }
+
+  assertCapability(modelId: string, capability: keyof ModelCapability) {
+    const model = this.getModelById(modelId)
+    if (!model.capabilities[capability]) {
+      throw new AppError('MODEL_CAPABILITY_MISMATCH', `${modelId} does not support ${capability}`)
+    }
+  }
+}
+```
+
+### 14.6 PromptProvider 设计
+
+PromptProvider 应同时服务于：
+
+- Agent system prompt。
+- Tool description。
+- Structured output repair prompt。
+- Review / precheck prompt。
+- Workflow stage prompt。
+- 调试态 prompt override。
+
+推荐请求级覆盖流程：
+
+```txt
+HTTP request
+  -> auth / debug permission check
+  -> parse promptProviderOverrides
+  -> createPromptProvider(basePrompts, overrides)
+  -> write PromptProvider into AsyncLocalStorage
+  -> Agent / Tool / StructuredOutputPipeline read current provider
+  -> model call records promptId + promptVersion + promptHash
+```
+
+注意：
+
+- 生产环境默认关闭任意 prompt override。
+- prompt override 只能用于开发态、灰度环境或受控管理员调试。
+- 每次 override 都应记录审计日志，避免线上行为不可复现。
+
+### 14.7 ToolFactory 设计
+
+工具不要直接读全局配置。工具创建应该显式接收上下文：
+
+```ts
+export function createKnowledgeSearchTool(ctx: ToolFactoryContext): ToolDefinition {
+  const prompt = ctx.promptProvider.getPrompt('tool.knowledge.search')
+
+  return {
+    id: 'knowledge.search',
+    description: prompt.value,
+    inputSchema: KnowledgeSearchInputSchema,
+    riskLevel: 'low',
+    execute: async input => {
+      ctx.policyContext.assertToolAllowed('knowledge.search')
+      return await searchKnowledgeBase(input)
+    },
+  }
+}
+```
+
+这保证：
+
+- 工具描述可以被 prompt 系统管理。
+- 工具执行前能走 Policy。
+- 工具内部模型调用也走 ModelClient。
+- 工具日志天然带 runId、stepId、agentId。
+
+### 14.8 StructuredOutputPipeline 设计
+
+对于 Artifact、Workflow Stage、A2AResponse 这类结构化结果，推荐统一走 pipeline：
+
+```ts
+export async function runStructuredPipeline<T>(
+  pipeline: StructuredOutputPipeline<T>,
+  input: StructuredGenerateInput,
+): Promise<T> {
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= pipeline.maxRetries; attempt++) {
+    const raw = await pipeline.generate({ ...input, attempt, lastError })
+    const parsed = await pipeline.validateSchema(raw)
+    const fixed = pipeline.autoFix ? await pipeline.autoFix(parsed) : parsed
+    const domainResult = pipeline.validateDomain
+      ? await pipeline.validateDomain(fixed)
+      : { ok: true }
+
+    if (domainResult.ok) {
+      return pipeline.normalize ? await pipeline.normalize(fixed) : fixed
+    }
+
+    lastError = domainResult
+  }
+
+  throw new AppError('STRUCTURED_OUTPUT_INVALID', 'Structured output validation failed', {
+    retryable: false,
+    details: lastError,
+  })
+}
+```
+
+### 14.9 MCP 工具适配原则
+
+方案二中的 MCP 经验应该抽象为外部工具提供者：
+
+```ts
+export interface ToolProvider {
+  listTools(): Promise<ToolDefinition[]>
+  getTool(toolId: string): Promise<ToolDefinition | null>
+}
+
+export class MCPToolProvider implements ToolProvider {
+  constructor(private readonly client: MCPClient) {}
+
+  async listTools() {
+    const definitions = await this.client.listTools()
+    return definitions.map(def => adaptMcpTool(def))
+  }
+}
+```
+
+Schema 兼容处理，例如 Gemini 对 JSON Schema 的限制，应封装在 `schema-sanitizer.ts`，不要散落到 Agent 或 Tool 中。
+
+### 14.10 AI 能力层的 MVP 实现边界
+
+| 能力 | MVP 必做 | 后置 |
+|---|---|---|
+| ModelClient | 是 | 多 provider 动态路由 |
+| ModelRegistry | 是 | 复杂成本优化路由 |
+| PromptProvider | 是 | 数据库版本管理和灰度发布 |
+| ToolFactory | 是 | 远程工具市场 |
+| StructuredOutputPipeline | 轻量实现 | 复杂领域回放引擎 |
+| MCP Adapter | 可选 | 多 MCP server 权限隔离 |
+| Langfuse Bridge | 可选但建议尽早 | 独立观测平台 |
+| Prompt Override | 开发态支持 | 生产后台管理 |
+
+
+
 ---
 
 ## 15. 前端目录结构
@@ -1696,6 +2256,87 @@ export type ArtifactEvent =
 4. Artifact 事件只传 metadata，不直接推送大内容。
 5. 前端 RunTimeline 只依赖事件协议，不依赖后端内部实现。
 
+
+### 17.6 融合增强：模型、Prompt 和结构化输出事件
+
+为了让方案二中的模型 fallback、prompt override、结构化输出重试具备可观测性，建议在原有 AgentEvent 之外补充以下内部事件。这些事件可以进入 EventStore，但前端是否展示由 RunTimeline 策略决定。
+
+```ts
+export type ModelLifecycleEvent =
+  | {
+      type: 'model.call.started'
+      runId: string
+      stepId: string
+      traceId: string
+      agentId?: string
+      modelAlias: string
+      actualModel?: string
+      promptHash?: string
+      timestamp: string
+    }
+  | {
+      type: 'model.call.completed'
+      runId: string
+      stepId: string
+      traceId: string
+      modelAlias: string
+      actualModel?: string
+      latencyMs: number
+      usage?: TokenUsage
+      timestamp: string
+    }
+  | {
+      type: 'model.fallback.started'
+      runId: string
+      stepId: string
+      traceId: string
+      fromModel: string
+      toModel: string
+      reason: string
+      timestamp: string
+    }
+
+export type PromptLifecycleEvent = {
+  type: 'prompt.override.applied' | 'prompt.loaded'
+  runId?: string
+  traceId: string
+  promptId: string
+  promptVersion?: string
+  promptHash: string
+  source: 'file' | 'db' | 'override'
+  timestamp: string
+}
+
+export type StructuredOutputEvent =
+  | {
+      type: 'structured_output.validation.failed'
+      runId: string
+      stepId?: string
+      pipelineId: string
+      attempt: number
+      errorCode: string
+      fixSuggestion?: string
+      timestamp: string
+    }
+  | {
+      type: 'structured_output.validation.completed'
+      runId: string
+      stepId?: string
+      pipelineId: string
+      attempts: number
+      timestamp: string
+    }
+```
+
+这些事件的价值：
+
+- 复盘为什么一次 Agent 输出失败。
+- 判断是否因为 prompt override 造成行为变化。
+- 观察 fallback 是否频繁发生。
+- 评估结构化输出 schema 是否过严或 prompt 是否不稳定。
+
+
+
 ---
 
 ## 18. 推荐 API 设计
@@ -1876,6 +2517,114 @@ export type WorkflowRun = {
 }
 ```
 
+
+### 20.7 融合增强：ModelCall 数据模型
+
+为了让方案二的模型 fallback、token usage、provider error 能在方案一框架里可追踪，建议增加 `ModelCall` 表或等价数据结构。
+
+```ts
+export type ModelCall = {
+  id: string
+  runId: string
+  stepId?: string
+  traceId: string
+  agentId?: string
+  modelAlias: string
+  provider: string
+  actualModel: string
+  promptHash?: string
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  estimatedCostUsd?: number
+  latencyMs?: number
+  status: 'running' | 'completed' | 'failed' | 'fallback'
+  fallbackFromModel?: string
+  errorCode?: string
+  errorMessage?: string
+  createdAt: string
+  completedAt?: string
+}
+```
+
+### 20.8 融合增强：PromptRun 数据模型
+
+```ts
+export type PromptRun = {
+  id: string
+  runId?: string
+  stepId?: string
+  traceId: string
+  promptId: string
+  promptVersion?: string
+  promptHash: string
+  source: 'file' | 'db' | 'override'
+  overrideByUserId?: string
+  createdAt: string
+}
+```
+
+说明：
+
+- `promptHash` 用于复现和 diff。
+- `source=override` 时必须记录操作者。
+- Prompt 原文是否入库要看安全策略；至少要保存 hash 和版本。
+
+### 20.9 融合增强：SessionHistory 数据模型
+
+方案二的 Redis 会话历史应作为 Session 层能力，不应替代 Run / Event / Artifact。
+
+```ts
+export type SessionHistoryItem = {
+  id: string
+  sessionId: string
+  userId?: string
+  role: 'user' | 'assistant' | 'tool' | 'system'
+  content: unknown
+  sourceRunId?: string
+  sourceEventId?: string
+  createdAt: string
+  expiresAt?: string
+}
+```
+
+Redis Key 建议：
+
+```txt
+agent-frame:session:{sessionId}:messages
+agent-frame:session:{sessionId}:summary
+agent-frame:session:{sessionId}:active-run
+```
+
+TTL 建议：
+
+| 数据 | MVP TTL | 说明 |
+|---|---:|---|
+| 原始聊天消息 | 7 天 | 对齐方案二经验 |
+| 会话摘要 | 30 天 | 用于上下文延续 |
+| active run 映射 | 1 天 | 用于前端恢复订阅 |
+```
+
+### 20.10 融合增强：StructuredOutputAttempt 数据模型
+
+```ts
+export type StructuredOutputAttempt = {
+  id: string
+  runId: string
+  stepId?: string
+  pipelineId: string
+  attempt: number
+  status: 'completed' | 'schema_failed' | 'domain_failed' | 'normalization_failed'
+  errorCode?: string
+  fixSuggestion?: string
+  createdAt: string
+}
+```
+
+该模型用于追踪“模型为什么连续三次生成失败”，避免只看到最终失败而不知道中间修复过程。
+
+
+
 ---
 
 ## 21. 测试策略
@@ -1912,6 +2661,27 @@ tests/
 | Event 顺序 | 确保前端 RunTimeline 可重放 |
 | Artifact 创建 | 确保 Agent 结果可沉淀 |
 | SSE 订阅 | 确保事件能实时推送 |
+
+
+### 21.2 融合增强后的新增测试项
+
+| 测试项 | 目标 |
+|---|---|
+| ModelRegistry 默认模型 | 未传 modelId 时能回退默认模型 |
+| Model capability mismatch | 请求结构化输出但模型不支持时能提前失败 |
+| Model fallback | 主模型返回 429 / 503 时能切换 fallback 并记录事件 |
+| PromptProvider 默认加载 | 无 override 时使用全局 prompt，不重复读取文件 |
+| PromptProvider 请求级覆盖 | 一个请求的 override 不影响另一个请求 |
+| Prompt hash 记录 | 每次模型调用能记录 promptHash |
+| ToolFactory 上下文注入 | Tool 可以拿到 promptProvider、modelClient、policyContext |
+| StructuredOutput schema failed | schema 失败时进入重试并记录 fixSuggestion |
+| StructuredOutput domain failed | 领域校验失败时能反馈给下一次生成 |
+| MCP schema sanitize | 不合规 JSON Schema 能被适配为目标模型可接受格式 |
+| SessionHistory Redis TTL | 消息写入后 TTL 正确 |
+| StreamErrorNormalizer | provider error / context exceed / unknown 能归一化 |
+| Langfuse span context | Langfuse span 能带 traceId、runId、stepId |
+
+
 
 ---
 
@@ -2282,6 +3052,97 @@ apps/api/src/shared/
 - `shared/` 不应该反向依赖任何业务模块。
 - 后续生产化时，日志、追踪、指标、错误处理都优先在这里统一增强。
 
+
+### 30.1 融合增强：shared/observability 接入 OpenTelemetry + Langfuse
+
+方案二中的 OpenTelemetry + Langfuse 实践应进入 `shared/observability`，但它只能增强可观测性，不能替代框架自身事件和数据库记录。
+
+推荐结构：
+
+```txt
+apps/api/src/shared/observability/
+├─ otel.ts                  # NodeSDK 初始化
+├─ langfuse.ts              # Langfuse exporter / span processor
+├─ span-context.ts          # AsyncLocalStorage 读取 traceId/runId/stepId
+├─ trace-context.ts         # 创建和传播 trace 上下文
+├─ metrics.ts
+└─ logger.ts
+```
+
+Span 必须注入：
+
+```txt
+traceId
+runId
+stepId
+agentId
+fromAgentId
+toAgentId
+workflowRunId
+workflowStageId
+artifactId
+modelAlias
+provider
+actualModel
+promptHash
+toolName
+errorCode
+```
+
+原则：
+
+- Langfuse Session 可以用 `sessionId` 或 `chatId` 映射。
+- Langfuse Trace 必须和框架 `traceId` 对齐。
+- ModelCall、ToolCall、A2A Call、Workflow Stage 都应有 span。
+- 不能只依赖 Langfuse 保存数据，关键事件仍要进入 EventStore。
+
+### 30.2 融合增强：shared/realtime 增加 StreamErrorNormalizer
+
+流式响应错误不能直接暴露 provider 原始异常。建议统一归一化：
+
+```ts
+export type StreamErrorPayload = {
+  type: 'context_exceed' | 'provider_error' | 'rate_limited' | 'timeout' | 'unknown'
+  message: string
+  errorCode: string
+  retryable: boolean
+  runId?: string
+  traceId?: string
+}
+```
+
+处理规则：
+
+| 原始错误 | 对外类型 | 是否可重试 |
+|---|---|---|
+| context window exceeded | `context_exceed` | 否，需压缩上下文 |
+| provider 429 | `rate_limited` | 是，可 fallback 或稍后重试 |
+| provider 503 | `provider_error` | 是，可 fallback |
+| abort / timeout | `timeout` | 视场景 |
+| unknown | `unknown` | 否，进入人工排查 |
+
+### 30.3 融合增强：features/sessions 使用 Redis 管理短期会话历史
+
+方案二用 Redis 存 7 天会话历史是合理经验。融合后建议：
+
+- Redis 保存短期聊天历史和 UI 恢复状态。
+- MySQL 保存关键 Run、Step、Event、Artifact。
+- 长期上下文进入 Memory，而不是无限堆叠 session messages。
+
+推荐接口：
+
+```ts
+export interface SessionHistoryStore {
+  appendMessage(sessionId: string, message: SessionHistoryItem): Promise<void>
+  listMessages(sessionId: string, limit?: number): Promise<SessionHistoryItem[]>
+  replaceMessages(sessionId: string, messages: SessionHistoryItem[]): Promise<void>
+  setTTL(sessionId: string, seconds: number): Promise<void>
+  clear(sessionId: string): Promise<void>
+}
+```
+
+
+
 ---
 
 ## 31. 补充：错误处理策略
@@ -2343,6 +3204,38 @@ export class AppError extends Error {
 - stage 失败不能直接丢失上下文，必须保存失败输入、错误码和可重试标记。
 - 对于可重试 stage，重试必须有最大次数和退避策略。
 - 对于人工节点失败，应进入 `requires_review` 或 `blocked` 状态，而不是直接 `failed`。
+
+
+### 31.4 融合增强：模型、结构化输出与流式响应错误码
+
+在原有错误码基础上，建议补充：
+
+```ts
+export type AIEngineeringErrorCode =
+  | 'MODEL_NOT_FOUND'
+  | 'MODEL_CAPABILITY_MISMATCH'
+  | 'MODEL_RATE_LIMITED'
+  | 'MODEL_PROVIDER_UNAVAILABLE'
+  | 'MODEL_FALLBACK_FAILED'
+  | 'PROMPT_NOT_FOUND'
+  | 'PROMPT_OVERRIDE_DENIED'
+  | 'STRUCTURED_OUTPUT_INVALID'
+  | 'STRUCTURED_OUTPUT_RETRY_EXHAUSTED'
+  | 'MCP_CLIENT_FAILED'
+  | 'MCP_SCHEMA_INCOMPATIBLE'
+  | 'SESSION_HISTORY_FAILED'
+  | 'STREAM_CONTEXT_EXCEEDED'
+```
+
+处理原则：
+
+- provider 原始错误必须转换为框架错误码。
+- 结构化输出失败必须区分 schema 失败、领域校验失败、重试耗尽。
+- prompt override 权限不足必须明确返回 `PROMPT_OVERRIDE_DENIED`。
+- MCP schema 不兼容应在工具注册阶段尽早发现。
+- 流式响应中断时，Run 状态和 EventStore 必须同步更新，不能只让前端断流。
+
+
 
 ---
 
@@ -2406,6 +3299,53 @@ type LogContext = {
 | `model.cost.estimated` | 估算成本 |
 | `sse.connection.count` | SSE 连接数 |
 | `sse.disconnect.count` | SSE 断开数 |
+
+
+### 32.4 融合增强：Langfuse 与框架 Trace 的关系
+
+方案二的 Langfuse 集成可以直接复用，但必须遵循以下关系：
+
+```txt
+框架 traceId：系统内部事实来源
+Langfuse trace/session：外部观测视图
+EventStore：可回放事实日志
+ModelCall 表：成本和模型调用事实来源
+```
+
+也就是说：
+
+- Langfuse 不能成为唯一审计来源。
+- Langfuse span 上必须带框架 ID。
+- 如果 Langfuse 上报失败，不应影响 Run 执行。
+- 本地结构化日志、EventStore、ModelCall 仍必须完整记录。
+
+推荐 Span 层级：
+
+```txt
+HTTP Request Span
+  -> Run Span
+     -> Agent Step Span
+        -> Model Call Span
+        -> Tool Call Span
+        -> A2A Call Span
+        -> Structured Output Validation Span
+     -> Artifact Save Span
+```
+
+### 32.5 融合增强：Prompt 和模型观测指标
+
+| 指标 | 说明 |
+|---|---|
+| `model.fallback.count` | fallback 次数 |
+| `model.fallback.rate` | fallback 比例 |
+| `prompt.override.count` | prompt override 次数 |
+| `structured_output.retry.count` | 结构化输出重试次数 |
+| `structured_output.failure.rate` | 结构化输出失败率 |
+| `mcp.tool.call.count` | MCP 工具调用次数 |
+| `mcp.schema.sanitize.count` | schema 修正次数 |
+| `session.history.redis.latency` | Redis 会话读写延迟 |
+
+
 
 ---
 
@@ -2579,6 +3519,51 @@ A2A + 可扩展 Agent 框架 MVP 至少需要满足以下验收标准。
 - 先同步调用，再考虑异步 Workflow。
 - 先定义 Artifact 抽象，再做具体业务产物。
 
+
+### 36.1 融合增强后的零删除实现顺序
+
+在原有实现顺序基础上，融合方案二工程经验后的推荐顺序如下。注意：这不是替换原顺序，而是把 AI 工程基础设施插入到可运行闭环的合理位置。
+
+```text
+1. packages/shared/events
+2. packages/shared/a2a
+3. apps/api/src/shared/errors
+4. apps/api/src/shared/observability/logger.ts
+5. apps/api/src/ai/model-client/model-client.ts
+6. apps/api/src/ai/model-client/model-registry.ts
+7. apps/api/src/ai/prompts/prompt-provider.ts
+8. apps/api/src/ai/tools/tool-factory.ts
+9. apps/api/src/runtime/run-manager.ts
+10. apps/api/src/runtime/event-emitter.ts
+11. apps/api/src/a2a/a2a-protocol.ts
+12. apps/api/src/a2a/a2a-policy.ts
+13. apps/api/src/a2a/a2a-router.ts
+14. apps/api/src/a2a/a2a-client.ts
+15. apps/api/src/ai/agents/supervisor.agent.ts
+16. apps/api/src/ai/agents/example-worker.agent.ts
+17. apps/api/src/ai/structured-output/pipeline.ts
+18. apps/api/src/features/runs/runs.route.ts
+19. apps/api/src/shared/realtime/sse.handler.ts
+20. apps/api/src/shared/realtime/stream-error-normalizer.ts
+21. apps/web/src/features/runs/useRunEvents.ts
+22. apps/web/src/features/runs/RunTimeline.tsx
+23. features/sessions Redis history 轻量实现
+24. artifacts 接口和最小 store
+25. workflow definition 类型和只读预留
+26. OpenTelemetry + Langfuse bridge
+27. MCPToolProvider 可选接入
+```
+
+核心原则：
+
+- 先把模型调用隔离层做好，再写 Agent。
+- 先把 PromptProvider 和 ToolFactory 做轻量版，再扩展复杂工具。
+- 先保证 Run / Event / A2A 可追踪，再接 Langfuse。
+- 先实现本地工具，再接 MCP。
+- 先做结构化输出校验，再把输出保存为 Artifact。
+
+
+
 ---
 
 ## 37. 补充：原始业务模块的处理建议
@@ -2603,6 +3588,37 @@ apps/api/src/plugins/knowledge.plugin.ts
 ```
 
 这样既不会让当前 MVP 过重，也不会堵死未来 RAG 和内容资料库扩展。
+
+### 37.3 融合增强：知识库与 MCP 的关系
+
+`features/knowledge` 是业务 API 或资料库能力，MCP 是外部工具接入协议。二者不要混淆。
+
+推荐关系：
+
+```txt
+features/knowledge
+  -> 管理知识库、文档、索引、权限
+
+ai/tools/knowledge-search.tool.ts
+  -> Agent 内部调用知识检索
+
+integrations/mcp
+  -> 可选接入外部知识工具或第三方工具服务
+```
+
+如果未来知识库能力由外部 MCP Server 提供，则：
+
+```txt
+Agent
+  -> knowledge.search ToolDefinition
+  -> MCPToolProvider
+  -> External Knowledge MCP Server
+```
+
+但对 Agent 来说，它仍然只是调用标准 Tool，不应该知道 MCP 细节。
+
+
+
 
 
 
@@ -4334,3 +5350,319 @@ WorkflowRunner 的职责：
 8. 前端 RunTimeline 为什么必须依赖 `packages/shared` 的事件协议？
 9. MySQL 中 Run、Step、Event、Artifact、ArtifactVersion 的关系是什么？
 10. 当前 MVP 阶段哪些东西不要做？
+
+
+---
+
+## 附录 B：方案二优秀经验融合位置索引
+
+| 方案二经验 | 原方案二位置 | 融合到方案一的位置 | 融合方式 |
+|---|---|---|---|
+| ModelRegistry | LLM 模型管理 | 4.4、14、20、32 | 抽象为 `ModelRegistry` + `ModelClient` 内部能力 |
+| 自定义 fetch / proxy | 模型管理 | 4.4、14 | 作为 Provider Adapter 能力，限制在 ai/model-client 内 |
+| Fallback Middleware | 模型中间件 | 4.4、17、20、32 | 统一放入 ModelClient，记录 fallback 事件和 ModelCall |
+| PromptProvider | Prompt 管理 | 0.14、4.4、14、20 | 升级为框架 Prompt 基础设施 |
+| 请求级 Prompt Override | Prompt 覆盖机制 | 14、20、31 | 通过 AsyncLocalStorage + 权限 + 审计实现 |
+| ToolFactory | Agent Tool 集 | 4.4、14、21 | 工具工厂统一接收 PromptProvider / ModelClient / PolicyContext |
+| 多层 LLM 推理 | 工具内层 LLM 推理 | 14、20、21 | 抽象为 Tool 内部 StructuredOutputPipeline |
+| Zod + 自动修复 + 重试 | generateHandFromNL | 4.4、14、17、20、21 | 抽象为通用 StructuredOutputPipeline |
+| MCP 客户端 | MCP 集成 | 4.4、6、14、37 | 作为 ToolProvider / integrations/mcp 接入 |
+| Gemini Schema Sanitizer | MCP Schema 兼容 | 14、21、37 | 放入 mcp/schema-sanitizer.ts |
+| OpenTelemetry + Langfuse | 可观测性 | 30、32 | 作为 shared/observability bridge，不替代 EventStore |
+| Redis 会话历史 | 会话历史管理 | 20、30 | 放入 features/sessions，不替代 RunStore |
+| 流式错误处理 | 错误处理策略 | 30、31 | 统一 StreamErrorNormalizer |
+
+## 附录 C：零删除融合原则校验
+
+本版生成规则：
+
+```txt
+原方案一全文
+  + 按章节插入融合增强内容
+  + 文末追加融合索引和校验报告
+  = 零删除融合版
+```
+
+校验要求：
+
+- 原方案一所有标题必须仍存在。
+- 原方案一原始正文必须作为新版文档的子序列存在。
+- 新增内容只能插入，不能覆盖原文。
+- 方案二业务名词只作为来源说明，不进入框架核心概念。
+- 新增实现不能破坏原 MVP 阶段边界。
+
+## 附录 D：仍然建议后置的能力
+
+| 能力 | 是否来自方案二经验 | 后置原因 |
+|---|---|---|
+| 多 MCP Server 动态发现 | 是 | 需要权限隔离和连接治理 |
+| Prompt 数据库版本平台 | 是 | MVP 文件版 PromptProvider 足够 |
+| 复杂模型成本路由 | 是 | 先实现 registry + fallback |
+| 全量 Langfuse 分析看板 | 是 | 先保证 trace 字段完整 |
+| 复杂领域回放校验引擎 | 是 | 先抽象 pipeline，再按业务接入 |
+| Tool Marketplace | 否 | MVP 只做内部 ToolRegistry |
+| 自动长期 Memory 写入 | 否 | 需要 MemoryPolicy 和审核流程 |
+| Temporal 强恢复 Workflow | 否 | 长任务稳定后再引入 |
+
+## 附录 E：融合后推荐 MVP 验收补充
+
+| 编号 | 验收项 | 标准 |
+|---|---|---|
+| F-1 | ModelRegistry | 至少支持默认模型、按 ID 获取、能力校验 |
+| F-2 | ModelClient 隔离 | Agent 代码中不直接 import Vercel AI SDK |
+| F-3 | PromptProvider | prompt 可从文件加载，支持请求级 override |
+| F-4 | Prompt 追踪 | 模型调用记录 promptHash |
+| F-5 | ToolFactory | Tool 由工厂创建并注入上下文 |
+| F-6 | StructuredOutput | 至少支持 schema 校验和失败重试 |
+| F-7 | Fallback | 模型限流时可 fallback，并产生事件 |
+| F-8 | SessionHistory | Redis 可保存短期会话历史，但不替代 RunStore |
+| F-9 | Stream Error | 流式错误归一化为稳定错误结构 |
+| F-10 | Observability | Langfuse span 或结构化日志带 traceId/runId/stepId |
+
+## 附录 F：原方案一章节保留校验表
+
+下表由脚本从原方案一标题提取生成。`保留状态=已保留` 表示该标题文本在零删除融合版中仍存在。
+
+| 序号 | 层级 | 原章节标题 | 保留状态 |
+|---:|---|---|---|
+| 1 | `#` | Agent Frame 框架设计（A2A + Workflow + Artifact 可扩展版） | 已保留 |
+| 2 | `##` | 0. 新人快速导读：15 分钟理解本框架 | 已保留 |
+| 3 | `###` | 0.1 一句话理解本框架 | 已保留 |
+| 4 | `###` | 0.2 新人推荐阅读顺序 | 已保留 |
+| 5 | `###` | 0.3 核心概念地图 | 已保留 |
+| 6 | `###` | 0.4 核心流程总览 | 已保留 |
+| 7 | `####` | 0.4.1 普通聊天 / 单 Agent 执行流程 | 已保留 |
+| 8 | `####` | 0.4.2 A2A 同步调用流程 | 已保留 |
+| 9 | `####` | 0.4.3 A2A 异步调用流程 | 已保留 |
+| 10 | `####` | 0.4.4 Workflow 到 Artifact 的产物流程 | 已保留 |
+| 11 | `####` | 0.4.5 Memory 安全写入流程 | 已保留 |
+| 12 | `###` | 0.5 当前 MVP 目标与非目标 | 已保留 |
+| 13 | `####` | 0.5.1 当前 MVP 要做 | 已保留 |
+| 14 | `####` | 0.5.2 当前 MVP 不做 | 已保留 |
+| 15 | `###` | 0.6 模块职责边界表 | 已保留 |
+| 16 | `###` | 0.7 关键 ID 贯穿说明 | 已保留 |
+| 17 | `###` | 0.8 新人开发第一个 Agent 的路径 | 已保留 |
+| 18 | `###` | 0.9 从请求到数据落库的端到端示例 | 已保留 |
+| 19 | `###` | 0.10 MVP 实现顺序 Checklist | 已保留 |
+| 20 | `###` | 0.11 常见误区清单 | 已保留 |
+| 21 | `###` | 0.12 文档章节关系图 | 已保留 |
+| 22 | `###` | 0.13 Glossary 术语表 | 已保留 |
+| 23 | `##` | 1. 总体结论 | 已保留 |
+| 24 | `##` | 2. 当前阶段判断 | 已保留 |
+| 25 | `##` | 3. 设计目标 | 已保留 |
+| 26 | `###` | 3.1 当前 MVP 目标 | 已保留 |
+| 27 | `###` | 3.2 未来扩展目标 | 已保留 |
+| 28 | `##` | 4. 技术栈 | 已保留 |
+| 29 | `###` | 4.1 后端 | 已保留 |
+| 30 | `###` | 4.2 前端 | 已保留 |
+| 31 | `###` | 4.3 默认技术栈边界 | 已保留 |
+| 32 | `###` | 4.4 Vercel AI SDK 正确使用方式与边界 | 已保留 |
+| 33 | `####` | 4.4.1 客观能力范围 | 已保留 |
+| 34 | `####` | 4.4.2 在本框架中的正确定位 | 已保留 |
+| 35 | `####` | 4.4.3 推荐目录结构 | 已保留 |
+| 36 | `####` | 4.4.4 `ModelClient` 抽象 | 已保留 |
+| 37 | `####` | 4.4.5 模型调用输入输出类型 | 已保留 |
+| 38 | `####` | 4.4.6 `VercelAIModelClient` 实现原则 | 已保留 |
+| 39 | `####` | 4.4.7 Tool Calling 与 A2A 的边界 | 已保留 |
+| 40 | `####` | 4.4.8 流式输出转换规则 | 已保留 |
+| 41 | `####` | 4.4.9 生产可观测性要求 | 已保留 |
+| 42 | `####` | 4.4.10 最终建议 | 已保留 |
+| 43 | `##` | 5. 总体架构 | 已保留 |
+| 44 | `##` | 6. 后端推荐目录结构 | 已保留 |
+| 45 | `##` | 7. 后端目录和文件作用说明 | 已保留 |
+| 46 | `###` | 7.1 根入口文件 | 已保留 |
+| 47 | `###` | 7.2 `features/` | 已保留 |
+| 48 | `####` | `features/chat/` | 已保留 |
+| 49 | `####` | `features/runs/` | 已保留 |
+| 50 | `####` | `features/agents/` | 已保留 |
+| 51 | `####` | `features/artifacts/` | 已保留 |
+| 52 | `####` | `features/projects/` | 已保留 |
+| 53 | `####` | `features/sessions/` | 已保留 |
+| 54 | `####` | `features/auth/` | 已保留 |
+| 55 | `####` | `features/usage/` | 已保留 |
+| 56 | `##` | 8. `runtime/` 运行时层 | 已保留 |
+| 57 | `###` | 8.1 文件说明 | 已保留 |
+| 58 | `###` | 8.2 RunStore 接口建议 | 已保留 |
+| 59 | `###` | 8.3 设计原则 | 已保留 |
+| 60 | `##` | 9. `a2a/` Agent-to-Agent 协议层 | 已保留 |
+| 61 | `###` | 9.1 文件说明 | 已保留 |
+| 62 | `###` | 9.2 A2A 请求响应模型 | 已保留 |
+| 63 | `###` | 9.3 A2A Policy 最小规则 | 已保留 |
+| 64 | `##` | 10. `workflow/` 通用工作流层 | 已保留 |
+| 65 | `###` | 10.1 文件说明 | 已保留 |
+| 66 | `###` | 10.2 Workflow 最小模型 | 已保留 |
+| 67 | `###` | 10.3 当前阶段使用方式 | 已保留 |
+| 68 | `##` | 11. `artifacts/` 通用产物层 | 已保留 |
+| 69 | `###` | 11.1 为什么需要 Artifact | 已保留 |
+| 70 | `###` | 11.2 文件说明 | 已保留 |
+| 71 | `###` | 11.3 Artifact 最小模型 | 已保留 |
+| 72 | `###` | 11.4 当前 MVP 建议 | 已保留 |
+| 73 | `##` | 12. `plugins/` 插件注册层 | 已保留 |
+| 74 | `###` | 12.1 文件说明 | 已保留 |
+| 75 | `###` | 12.2 插件模型 | 已保留 |
+| 76 | `###` | 12.3 未来扩展示例 | 已保留 |
+| 77 | `##` | 13. `memory/` 通用记忆层 | 已保留 |
+| 78 | `###` | 13.1 文件说明 | 已保留 |
+| 79 | `###` | 13.2 Memory Scope | 已保留 |
+| 80 | `###` | 13.3 当前建议 | 已保留 |
+| 81 | `##` | 14. `ai/` AI 能力层 | 已保留 |
+| 82 | `###` | 14.1 文件说明 | 已保留 |
+| 83 | `###` | 14.2 Agent 定义建议 | 已保留 |
+| 84 | `###` | 14.3 AgentCapability | 已保留 |
+| 85 | `##` | 15. 前端目录结构 | 已保留 |
+| 86 | `###` | 15.1 前端模块说明 | 已保留 |
+| 87 | `###` | 15.2 前端 MVP 页面建议 | 已保留 |
+| 88 | `##` | 16. `packages/shared` 共享包设计 | 已保留 |
+| 89 | `###` | 16.1 共享包原则 | 已保留 |
+| 90 | `##` | 17. 事件协议设计 | 已保留 |
+| 91 | `###` | 17.1 基础事件 | 已保留 |
+| 92 | `###` | 17.2 A2A 事件 | 已保留 |
+| 93 | `###` | 17.3 Workflow 事件 | 已保留 |
+| 94 | `###` | 17.4 Artifact 事件 | 已保留 |
+| 95 | `###` | 17.5 事件设计原则 | 已保留 |
+| 96 | `##` | 18. 推荐 API 设计 | 已保留 |
+| 97 | `###` | 18.1 Run API | 已保留 |
+| 98 | `###` | 18.2 Agent API | 已保留 |
+| 99 | `###` | 18.3 Artifact API | 已保留 |
+| 100 | `###` | 18.4 Project API，MVP 可后置 | 已保留 |
+| 101 | `###` | 18.5 Workflow API，MVP 可只读或后置 | 已保留 |
+| 102 | `##` | 19. MVP 推荐执行链路 | 已保留 |
+| 103 | `###` | 19.1 A2A 同步调用链路 | 已保留 |
+| 104 | `###` | 19.2 未来 Workflow 链路 | 已保留 |
+| 105 | `##` | 20. 数据模型建议 | 已保留 |
+| 106 | `###` | 20.1 Run | 已保留 |
+| 107 | `###` | 20.2 Step | 已保留 |
+| 108 | `###` | 20.3 Project | 已保留 |
+| 109 | `###` | 20.4 Artifact | 已保留 |
+| 110 | `###` | 20.5 ArtifactVersion | 已保留 |
+| 111 | `###` | 20.6 WorkflowRun，后续实现 | 已保留 |
+| 112 | `##` | 21. 测试策略 | 已保留 |
+| 113 | `###` | 21.1 MVP 必测项 | 已保留 |
+| 114 | `##` | 22. 文档目录建议 | 已保留 |
+| 115 | `###` | 22.1 每个文档作用 | 已保留 |
+| 116 | `##` | 23. 环境变量建议 | 已保留 |
+| 117 | `###` | 23.1 变量说明 | 已保留 |
+| 118 | `##` | 24. MVP 阶段现在不要做的事情 | 已保留 |
+| 119 | `###` | 24.1 不要做复杂业务链路 | 已保留 |
+| 120 | `###` | 24.2 不要做过重基础设施 | 已保留 |
+| 121 | `###` | 24.3 不要做过强 Agent 自主性 | 已保留 |
+| 122 | `###` | 24.4 不要做复杂产物系统 | 已保留 |
+| 123 | `##` | 25. 当前必须预留但可以轻实现的能力 | 已保留 |
+| 124 | `##` | 26. 演进路线 | 已保留 |
+| 125 | `###` | 阶段 1：A2A MVP | 已保留 |
+| 126 | `###` | 阶段 2：Artifact MVP | 已保留 |
+| 127 | `###` | 阶段 3：Workflow 轻量 MVP | 已保留 |
+| 128 | `###` | 阶段 4：Project + Memory | 已保留 |
+| 129 | `###` | 阶段 5：业务插件扩展 | 已保留 |
+| 130 | `###` | 阶段 6：生产化 | 已保留 |
+| 131 | `##` | 27. 最小可行目录 | 已保留 |
+| 132 | `##` | 28. 核心设计原则 | 已保留 |
+| 133 | `##` | 29. 最终定位 | 已保留 |
+| 134 | `##` | 30. 补充：shared 基础设施目录说明 | 已保留 |
+| 135 | `##` | 31. 补充：错误处理策略 | 已保留 |
+| 136 | `###` | 31.1 统一错误类型 | 已保留 |
+| 137 | `###` | 31.2 A2A 错误处理原则 | 已保留 |
+| 138 | `###` | 31.3 Workflow 错误处理原则 | 已保留 |
+| 139 | `##` | 32. 补充：可观测性设计 | 已保留 |
+| 140 | `###` | 32.1 必须贯穿的 ID | 已保留 |
+| 141 | `###` | 32.2 推荐日志字段 | 已保留 |
+| 142 | `###` | 32.3 MVP 指标 | 已保留 |
+| 143 | `##` | 33. 补充：安全与治理设计 | 已保留 |
+| 144 | `###` | 33.1 MVP 必须实现 | 已保留 |
+| 145 | `###` | 33.2 后续再做 | 已保留 |
+| 146 | `###` | 33.3 A2APolicy 建议 | 已保留 |
+| 147 | `##` | 34. 补充：Mermaid 执行时序图 | 已保留 |
+| 148 | `###` | 34.1 A2A 同步调用 MVP | 已保留 |
+| 149 | `###` | 34.2 未来 Workflow 执行链路 | 已保留 |
+| 150 | `##` | 35. 补充：MVP 验收标准 | 已保留 |
+| 151 | `##` | 36. 补充：推荐实现顺序 | 已保留 |
+| 152 | `##` | 37. 补充：原始业务模块的处理建议 | 已保留 |
+| 153 | `###` | 37.1 `features/knowledge` 是否保留 | 已保留 |
+| 154 | `###` | 37.2 推荐位置 | 已保留 |
+| 155 | `##` | 附录：MySQL 适配说明 | 已保留 |
+| 156 | `##` | 38. 补充：整体一致性审视后的 4 个优化项 | 已保留 |
+| 157 | `###` | 38.1 优化项一：明确 Artifact 与 Workflow Stage 的关联 | 已保留 |
+| 158 | `####` | 问题说明 | 已保留 |
+| 159 | `####` | 优化建议 | 已保留 |
+| 160 | `####` | 落地原则 | 已保留 |
+| 161 | `###` | 38.2 优化项二：Memory 更新不要和 Run 状态强耦合 | 已保留 |
+| 162 | `####` | 问题说明 | 已保留 |
+| 163 | `####` | 优化建议 | 已保留 |
+| 164 | `####` | 推荐流程 | 已保留 |
+| 165 | `####` | 落地原则 | 已保留 |
+| 166 | `###` | 38.3 优化项三：多 Agent 并行写 Artifact / Memory 时增加事务或锁策略 | 已保留 |
+| 167 | `####` | 问题说明 | 已保留 |
+| 168 | `####` | 优化建议 | 已保留 |
+| 169 | `####` | 推荐增加版本字段 | 已保留 |
+| 170 | `####` | 推荐写入顺序 | 已保留 |
+| 171 | `###` | 38.4 优化项四：保持 Vercel AI SDK 的适配层隔离，降低版本升级风险 | 已保留 |
+| 172 | `####` | 问题说明 | 已保留 |
+| 173 | `####` | 优化建议 | 已保留 |
+| 174 | `####` | 推荐增加适配层测试 | 已保留 |
+| 175 | `####` | 落地原则 | 已保留 |
+| 176 | `##` | 39. 补充：完整 Mermaid 系统架构图 | 已保留 |
+| 177 | `###` | 39.1 总体模块架构图 | 已保留 |
+| 178 | `###` | 39.2 A2A 同步调用时序图 | 已保留 |
+| 179 | `###` | 39.3 Workflow 到 Artifact 的产物链路图 | 已保留 |
+| 180 | `###` | 39.4 Memory 安全写入流程图 | 已保留 |
+| 181 | `###` | 39.5 ModelClient 与 Vercel AI SDK 隔离图 | 已保留 |
+| 182 | `#` | 40. A2A 同步到异步的扩展设计 | 已保留 |
+| 183 | `##` | 40.1 为什么当前同步 A2A 可以扩展到异步 A2A | 已保留 |
+| 184 | `##` | 40.2 A2A 调用模式定义 | 已保留 |
+| 185 | `##` | 40.3 A2ARequest 扩展设计 | 已保留 |
+| 186 | `##` | 40.4 A2AResponse 区分同步结果、异步句柄和流式句柄 | 已保留 |
+| 187 | `##` | 40.5 AgentCapability 增加 supportedModes | 已保留 |
+| 188 | `##` | 40.6 A2AClient 接口预留 callSync / startAsync / stream | 已保留 |
+| 189 | `##` | 40.7 AgentEvent 增加异步 A2A 事件 | 已保留 |
+| 190 | `##` | 40.8 异步 A2A 推荐执行流程 | 已保留 |
+| 191 | `##` | 40.9 同步、异步、流式模式选择建议 | 已保留 |
+| 192 | `##` | 40.10 队列与 Worker 的后续实现边界 | 已保留 |
+| 193 | `##` | 40.11 异步 A2A 的 MySQL 状态表建议 | 已保留 |
+| 194 | `##` | 40.12 异步 A2A 当前不要做的事情 | 已保留 |
+| 195 | `##` | 41. Agent 输入输出与上下文管理设计 | 已保留 |
+| 196 | `###` | 41.1 核心结论 | 已保留 |
+| 197 | `###` | 41.2 为什么不能直接把 Agent1 的复杂输出塞给 Agent2 | 已保留 |
+| 198 | `###` | 41.3 输入输出分层原则 | 已保留 |
+| 199 | `####` | 41.3.1 Direct Input：直接输入 | 已保留 |
+| 200 | `####` | 41.3.2 ArtifactRef：复杂产物引用 | 已保留 |
+| 201 | `####` | 41.3.3 ContextRef：上下文引用 | 已保留 |
+| 202 | `###` | 41.4 AgentCapability 中声明输入输出契约 | 已保留 |
+| 203 | `###` | 41.5 统一 AgentInput / AgentOutput | 已保留 |
+| 204 | `####` | 41.5.1 AgentInput | 已保留 |
+| 205 | `####` | 41.5.2 AgentOutput | 已保留 |
+| 206 | `###` | 41.6 ContextBuilder 统一上下文构造 | 已保留 |
+| 207 | `####` | 41.6.1 BuildContextInput | 已保留 |
+| 208 | `####` | 41.6.2 AgentExecutionContext | 已保留 |
+| 209 | `###` | 41.7 Agent1 复杂输出传给 Agent2 的标准流程 | 已保留 |
+| 210 | `####` | 第一步：Agent1 输出结构化结果 | 已保留 |
+| 211 | `####` | 第二步：校验 Agent1 输出 | 已保留 |
+| 212 | `####` | 第三步：保存为 ArtifactVersion | 已保留 |
+| 213 | `####` | 第四步：A2A 调用 Agent2 时传 ArtifactRef | 已保留 |
+| 214 | `####` | 第五步：Agent2 通过 ContextBuilder 加载上下文 | 已保留 |
+| 215 | `###` | 41.8 Mermaid：Agent 输入输出与上下文传递流程 | 已保留 |
+| 216 | `###` | 41.9 上下文分类 | 已保留 |
+| 217 | `###` | 41.10 Schema 管理建议 | 已保留 |
+| 218 | `###` | 41.11 判断直接传还是 ArtifactRef | 已保留 |
+| 219 | `###` | 41.12 MySQL 存储补充 | 已保留 |
+| 220 | `###` | 41.13 Workflow 场景下的输入输出传递 | 已保留 |
+| 221 | `###` | 41.14 输入输出和上下文管理风险点 | 已保留 |
+| 222 | `###` | 41.15 最佳实践约束 | 已保留 |
+| 223 | `##` | 附录：新人理解与维护建议 | 已保留 |
+| 224 | `###` | A.1 新人第一次阅读建议 | 已保留 |
+| 225 | `###` | A.2 开发新人优先掌握的 5 个文件方向 | 已保留 |
+| 226 | `###` | A.3 文档维护原则 | 已保留 |
+| 227 | `###` | A.4 判断一个新需求应该放在哪里 | 已保留 |
+| 228 | `###` | A.5 新人验收标准 | 已保留 |
+
+
+## 附录 G：机器校验结果
+
+| 校验项 | 结果 |
+|---|---|
+| 原方案一字符数 | 109018 |
+| 融合版字符数 | 145726 |
+| 原方案一标题数量 | 228 |
+| 缺失原标题数量 | 0 |
+| 原方案一全文是否作为融合版子序列存在 | 是 |
+
+未发现原方案一标题缺失。
