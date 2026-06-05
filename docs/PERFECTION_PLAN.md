@@ -79,7 +79,7 @@
 | 5.3 | `plugins/builtin-plugins.ts` 内置 Agent 插件注册 | P3 | ✅ | 2026-06-03 |
 | 5.4 | 前端 `features/agents/` Agent 列表与能力展示页 | P1 | ✅ | 2026-06-03 |
 | 5.5 | 前端 `features/workflows/` Workflow 进度展示页 | P3 | ✅ | 2026-06-04 |
-| 5.6 | 第一个业务模板插件（creative-writing） | P3 | ❌ | — |
+| 5.6 | 第一个业务模板插件（creative-writing） | P3 | ✅ | 2026-06-05 |
 
 ### 阶段 6 — 生产化与规模化（P3）
 
@@ -155,9 +155,9 @@
 | `ai/agents/research.agent.ts` | `apps/api/src/ai/agents/research.agent.ts` | ✅ 完成 | 研究专业 Agent |
 | `ai/agents/summary.agent.ts` | `apps/api/src/ai/agents/summary.agent.ts` | ✅ 完成 | 总结专业 Agent |
 | `ai/agents/agent-ids.ts` | `apps/api/src/ai/agents/agent-ids.ts` | ✅ 完成 | Agent ID 常量，防止魔法字符串 |
-| `ai/model-client/middlewares/` | ❌ 尚不存在 | ❌ 未开始 | ModelMiddleware（日志、fallback）待实现 |
-| `ai/model-client/model-registry.ts` | ❌ 尚不存在 | ❌ 未开始 | ModelRegistry 独立模块待实现 |
-| `ai/structured-output/` | ❌ 尚不存在 | ❌ 未开始 | StructuredOutputPipeline 待实现 |
+| `ai/model-client/middlewares/` | `apps/api/src/ai/model-client/middlewares/index.ts` | ✅ 完成 | LoggingMiddleware + FallbackMiddleware 函数组合 |
+| `ai/model-client/model-registry.ts` | `apps/api/src/ai/model-client/model-registry.ts` | ✅ 完成 | ModelRegistry 独立模块，含 get/getFallback/hasCapability |
+| `ai/structured-output/` | `apps/api/src/ai/structured-output/pipeline.ts` + `repair.ts` | ✅ 完成 | executeWithRetry + Zod 校验 + 自动修复重试 |
 
 ### 1.4 Workflow 层 ✅
 
@@ -257,8 +257,8 @@
 | `shared/realtime/redis-event-bus.ts` | ✅ | ✅ 完成 | Redis Pub/Sub EventBus 实现 |
 | `shared/realtime/sse.handler.ts` | ✅ | ✅ 完成 | SSE 推送封装 |
 | `shared/realtime/ws.hub.ts` | ✅ | ✅ 完成 | WebSocket 连接管理、多 Run 房间订阅 |
-| `shared/observability/langfuse-bridge.ts` | ❌ 尚不存在 | ❌ 未开始 | Langfuse 链路追踪桥接待实现 |
-| `shared/errors/stream-error-normalizer.ts` | ❌ 尚不存在 | ❌ 未开始 | 流式错误归一化待实现 |
+| `shared/observability/langfuse-bridge.ts` | `apps/api/src/shared/observability/langfuse-bridge.ts` | ✅ 完成 | 无配置 no-op；有配置 logging stub；接 LANGFUSE_* 环境变量 |
+| `shared/errors/stream-error-normalizer.ts` | `apps/api/src/shared/errors/stream-error-normalizer.ts` | ✅ 完成 | 识别 RATE_LIMIT / MODEL_TIMEOUT / PROVIDER_ERROR，接入 stream() |
 
 ### 1.11 packages/shared ✅
 

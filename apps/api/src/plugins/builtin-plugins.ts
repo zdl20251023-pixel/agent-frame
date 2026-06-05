@@ -6,6 +6,7 @@ import {
   SUMMARY_AGENT_ID,
 } from '../ai/agents/agent-ids.js'
 import { pluginRegistry } from './plugin-registry.js'
+import { creativeWritingPlugin } from './creative-writing/index.js'
 
 // ============================================================
 // plugins/builtin-plugins.ts — 内置 Agent 插件注册
@@ -189,4 +190,5 @@ export function registerBuiltinPlugins(): void {
     .register(researchPlugin)
     .register(summaryPlugin)
     .register(builtinWorkflowsPlugin)
+    .register(creativeWritingPlugin)
 }

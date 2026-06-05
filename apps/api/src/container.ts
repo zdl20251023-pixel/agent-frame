@@ -14,6 +14,14 @@ import {
   RESEARCH_AGENT_ID,
   SUMMARY_AGENT_ID,
 } from './ai/agents/agent-ids.js'
+import {
+  OutlineAgent,
+  WritingAgent,
+  ReviewAgent,
+  OUTLINE_AGENT_ID,
+  WRITING_AGENT_ID,
+  REVIEW_AGENT_ID,
+} from './plugins/creative-writing/index.js'
 import { AgentsService } from './features/agents/agents.service.js'
 import { ArtifactsService } from './features/artifacts/artifacts.service.js'
 import { WorkflowRunner } from './workflow/workflow-runner.js'
@@ -99,20 +107,38 @@ export function createContainer(): AppContainer {
 
   // ─── A2A 层 ──────────────────────────────────────────────
   const a2aPolicy = new A2APolicy()
-  // 注册允许的调用关系（Supervisor → 专业 Agent）
-  a2aPolicy.allow(SUPERVISOR_AGENT_ID, [RESEARCH_AGENT_ID, SUMMARY_AGENT_ID])
+  // A2A 权限：Supervisor 可调度核心专业 Agent 和创意写作 Agent
+  a2aPolicy.allow(SUPERVISOR_AGENT_ID, [
+    RESEARCH_AGENT_ID,
+    SUMMARY_AGENT_ID,
+    OUTLINE_AGENT_ID,
+    WRITING_AGENT_ID,
+    REVIEW_AGENT_ID,
+  ])
   // WorkflowRunner 可以调用所有已注册 Agent
-  a2aPolicy.allow(WORKFLOW_RUNNER_AGENT_ID, [RESEARCH_AGENT_ID, SUMMARY_AGENT_ID])
+  a2aPolicy.allow(WORKFLOW_RUNNER_AGENT_ID, [
+    RESEARCH_AGENT_ID,
+    SUMMARY_AGENT_ID,
+    OUTLINE_AGENT_ID,
+    WRITING_AGENT_ID,
+    REVIEW_AGENT_ID,
+  ])
 
   const a2aRouter = new A2ARouter()
   const a2aClient = new A2AClient(store, a2aPolicy, a2aRouter)
 
-  // ─── 专业 Agent 注册 ─────────────────────────────────────
+  // ─── 专业 Agent 注册（核心 + 创意写作）────────────────────
   const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
   const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
+  const outlineAgent = new OutlineAgent(modelClient, store, artifactStore)
+  const writingAgent = new WritingAgent(modelClient, store, artifactStore)
+  const reviewAgent = new ReviewAgent(modelClient, store, artifactStore)
 
   a2aRouter.register(createLocalAgentAdapter(researchAgent))
   a2aRouter.register(createLocalAgentAdapter(summaryAgent))
+  a2aRouter.register(createLocalAgentAdapter(outlineAgent))
+  a2aRouter.register(createLocalAgentAdapter(writingAgent))
+  a2aRouter.register(createLocalAgentAdapter(reviewAgent))
 
   // ─── SupervisorAgent ─────────────────────────────────────
   const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store, memoryRetriever, memoryStore)
