@@ -189,4 +189,22 @@ export class MemoryRunStore implements RunStore {
     const ids = this.toolInvocationsByRun.get(runId) ?? []
     return ids.map((id) => this.toolInvocations.get(id)!).filter(Boolean)
   }
+
+  async listRecoverableToolInvocations(options: { staleBefore: string; limit?: number }): Promise<ToolInvocation[]> {
+    const staleMs = Date.parse(options.staleBefore)
+    const limit = options.limit ?? 50
+    return [...this.toolInvocations.values()]
+      .filter((invocation) => {
+        if (
+          invocation.status !== TOOL_INVOCATION_STATUS.RUNNING &&
+          invocation.status !== TOOL_INVOCATION_STATUS.WAITING_REPAIR
+        ) {
+          return false
+        }
+        const heartbeat = Date.parse(invocation.heartbeatAt ?? invocation.updatedAt)
+        return Number.isFinite(heartbeat) && heartbeat <= staleMs
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, limit)
+  }
 }

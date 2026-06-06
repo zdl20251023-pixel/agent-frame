@@ -17,6 +17,8 @@ export type ToolInvocation = {
   phase: ToolInvocationPhase
   inputHash: string
   inputPreview?: unknown
+  /** 用于恢复器重放当前 phase 的最小载荷，例如 artifact_write 的写入参数。 */
+  recoveryPayload?: unknown
   outputRef?: string
   errorCode?: string
   errorMessage?: string
@@ -42,6 +44,7 @@ export type UpdateToolInvocationInput = {
   status?: ToolInvocationStatus
   phase?: ToolInvocationPhase
   outputRef?: string
+  recoveryPayload?: unknown
   errorCode?: string
   errorMessage?: string
   heartbeatAt?: string

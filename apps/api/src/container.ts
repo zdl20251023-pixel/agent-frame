@@ -48,6 +48,7 @@ import type { MemoryStore } from './memory/memory.types.js'
 import { AgentTaskWorker } from './queues/agent-task.worker.js'
 import { SessionsRepository } from './features/sessions/sessions.repository.js'
 import { SessionSummaryService } from './features/sessions/session-summary.service.js'
+import { ToolInvocationRecoveryWorker } from './runtime/tool-invocation-recovery.worker.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -74,6 +75,7 @@ export type AppContainer = {
   memoryStore: MemoryStore
   memoryRetriever: MemoryRetriever
   agentTaskWorker: AgentTaskWorker
+  toolInvocationRecoveryWorker: ToolInvocationRecoveryWorker
 }
 
 function createStore(): RunStore {
@@ -192,6 +194,16 @@ export function createContainer(): AppContainer {
   })
   agentTaskWorker.start()
 
+  // ─── ToolInvocation Recovery Worker ───────────────────────
+  const toolInvocationRecoveryWorker = new ToolInvocationRecoveryWorker(store, artifactStore, {
+    // 只有持久化存储模式需要跨进程重启恢复；内存模式没有可恢复状态源。
+    enabled: !!env.DATABASE_URL,
+    pollIntervalMs: 30000,
+    staleAfterMs: 120000,
+    batchSize: 20,
+  })
+  toolInvocationRecoveryWorker.start()
+
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
@@ -215,6 +227,7 @@ export function createContainer(): AppContainer {
     memoryStore,
     memoryRetriever,
     agentTaskWorker,
+    toolInvocationRecoveryWorker,
   }
 }
 

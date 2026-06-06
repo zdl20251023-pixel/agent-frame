@@ -1,4 +1,4 @@
-import { and, asc, eq, desc } from 'drizzle-orm'
+import { and, asc, eq, desc, inArray, lte } from 'drizzle-orm'
 import type {
   Run,
   RunStatus,
@@ -212,6 +212,7 @@ export class MySQLRunStore implements RunStore {
       phase: TOOL_INVOCATION_PHASE.CREATED,
       inputHash: input.inputHash,
       inputPreview: input.inputPreview ?? null,
+      recoveryPayload: null,
       outputRef: null,
       errorCode: null,
       errorMessage: null,
@@ -256,6 +257,7 @@ export class MySQLRunStore implements RunStore {
       .set({
         status: update.status,
         phase: update.phase,
+        recoveryPayload: update.recoveryPayload,
         outputRef: update.outputRef,
         errorCode: update.errorCode,
         errorMessage: update.errorMessage,
@@ -274,6 +276,25 @@ export class MySQLRunStore implements RunStore {
       .from(toolInvocations)
       .where(eq(toolInvocations.runId, runId))
       .orderBy(toolInvocations.createdAt)
+
+    return rows.map(this.mapToolInvocation)
+  }
+
+  async listRecoverableToolInvocations(options: { staleBefore: string; limit?: number }): Promise<ToolInvocation[]> {
+    const rows = await this.db
+      .select()
+      .from(toolInvocations)
+      .where(
+        and(
+          inArray(toolInvocations.status, [
+            TOOL_INVOCATION_STATUS.RUNNING,
+            TOOL_INVOCATION_STATUS.WAITING_REPAIR,
+          ]),
+          lte(toolInvocations.updatedAt, toMySQL(options.staleBefore)),
+        ),
+      )
+      .orderBy(toolInvocations.updatedAt)
+      .limit(options.limit ?? 50)
 
     return rows.map(this.mapToolInvocation)
   }
@@ -326,6 +347,7 @@ export class MySQLRunStore implements RunStore {
     phase: row.phase as ToolInvocation['phase'],
     inputHash: row.inputHash,
     inputPreview: row.inputPreview ?? undefined,
+    recoveryPayload: row.recoveryPayload ?? undefined,
     outputRef: row.outputRef ?? undefined,
     errorCode: row.errorCode ?? undefined,
     errorMessage: row.errorMessage ?? undefined,

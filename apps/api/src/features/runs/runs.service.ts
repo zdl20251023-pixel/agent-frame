@@ -1,4 +1,4 @@
-import type { Run } from '@agent-frame/shared'
+import type { Run, ToolInvocation } from '@agent-frame/shared'
 import type { ConversationContext } from '@agent-frame/shared'
 import type { RunManager } from '../../runtime/run-manager.js'
 import type { RunStore } from '../../runtime/stores/run-store.js'
@@ -130,6 +130,20 @@ export class RunsService {
   async getArtifacts(runId: string, userId: string) {
     await this.assertRunAccess(runId, userId)
     return this.artifactStore.listArtifactsByRun(runId)
+  }
+
+  async getToolInvocations(runId: string, userId: string): Promise<ToolInvocation[]> {
+    await this.assertRunAccess(runId, userId)
+    return this.store.listToolInvocations(runId)
+  }
+
+  async getToolInvocation(invocationId: string, userId: string): Promise<ToolInvocation> {
+    const invocation = await this.store.getToolInvocation(invocationId)
+    if (!invocation) {
+      throw new AppError('NOT_FOUND', `ToolInvocation not found: ${invocationId}`, { statusCode: 404 })
+    }
+    await this.assertRunAccess(invocation.runId, userId)
+    return invocation
   }
 
   async assertRunAccess(runId: string, userId: string): Promise<void> {

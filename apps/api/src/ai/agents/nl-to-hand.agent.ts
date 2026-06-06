@@ -404,13 +404,6 @@ export class NlToHandAgent {
     })
 
     try {
-      if (params.toolInvocation) {
-        await this.store.updateToolInvocation(params.toolInvocation.id, {
-          status: TOOL_INVOCATION_STATUS.RUNNING,
-          phase: TOOL_INVOCATION_PHASE.ARTIFACT_WRITE,
-          heartbeatAt: now(),
-        })
-      }
       const preview = this.buildToolPreview(params.toolInput)
       const idempotencyKey = params.toolInvocation
         ? `${params.toolInvocation.idempotencyKey}:artifact`
@@ -438,6 +431,47 @@ export class NlToHandAgent {
 
       const isPatch = Boolean(params.commandContext?.artifactId && params.commandContext.baseVersionId)
       const artifactTitle = this.buildArtifactTitle(preview, params.status)
+      const createArtifactInput = {
+        runId: params.runId,
+        type: ARTIFACT_TYPES.HAND_HISTORY,
+        title: artifactTitle,
+        idempotencyKey,
+        metadata: {
+          source: 'nl_to_hand',
+          status: params.status,
+          state: params.status === 'valid' ? 'valid' : 'draft',
+          toolInvocationId: params.toolInvocation?.id,
+          idempotencyKey,
+          summary: artifactTitle,
+          ...preview,
+        },
+      }
+      const artifactContext = { runId: params.runId, stepId: artifactStep.id, agentId: this.agentId, idempotencyKey }
+      const recoveryPayload = isPatch
+        ? {
+          kind: 'create_artifact_version',
+          artifactId: params.commandContext!.artifactId,
+          baseVersionId: params.commandContext!.baseVersionId,
+          content,
+          context: { runId: params.runId, stepId: artifactStep.id, agentId: this.agentId },
+          diffSummary: params.userMessage.slice(0, 500),
+        }
+        : {
+          kind: 'create_artifact_with_version',
+          artifactInput: createArtifactInput,
+          content,
+          context: artifactContext,
+        }
+
+      if (params.toolInvocation) {
+        await this.store.updateToolInvocation(params.toolInvocation.id, {
+          status: TOOL_INVOCATION_STATUS.RUNNING,
+          phase: TOOL_INVOCATION_PHASE.ARTIFACT_WRITE,
+          recoveryPayload,
+          heartbeatAt: now(),
+        })
+      }
+
       const result = isPatch
         ? await this.createPatchedHandHistoryVersion({
           artifactId: params.commandContext!.artifactId,
@@ -448,23 +482,9 @@ export class NlToHandAgent {
           diffSummary: params.userMessage,
         })
         : await this.artifactStore.createArtifactWithVersion(
-          {
-            runId: params.runId,
-            type: ARTIFACT_TYPES.HAND_HISTORY,
-            title: artifactTitle,
-            idempotencyKey,
-            metadata: {
-              source: 'nl_to_hand',
-              status: params.status,
-              state: params.status === 'valid' ? 'valid' : 'draft',
-              toolInvocationId: params.toolInvocation?.id,
-              idempotencyKey,
-              summary: artifactTitle,
-              ...preview,
-            },
-          },
+          createArtifactInput,
           content,
-          { runId: params.runId, stepId: artifactStep.id, agentId: this.agentId, idempotencyKey },
+          artifactContext,
         )
 
       const { artifact, version } = result

@@ -10,6 +10,7 @@ import { projectsRoute } from './features/projects/projects.route.js'
 import { memoryRoute } from './features/memory/memory.route.js'
 import { usageRoute } from './features/usage/usage.route.js'
 import { agentTasksRoute } from './features/agent-tasks/agent-tasks.route.js'
+import { toolInvocationsRoute } from './features/tool-invocations/tool-invocations.route.js'
 import { wsRoute } from './features/realtime/ws.route.js'
 import { isAppError } from './shared/errors/app-error.js'
 import { logger } from './shared/observability/logger.js'
@@ -122,6 +123,7 @@ export function createApp() {
     .use(memoryRoute)
     .use(usageRoute)
     .use(agentTasksRoute)
+    .use(toolInvocationsRoute)
     .use(wsRoute)
     .use(pluginsRoute)
 

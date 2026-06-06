@@ -127,6 +127,7 @@ export const toolInvocations = mysqlTable(
     phase: varchar('phase', { length: 40 }).notNull().default('created'),
     inputHash: varchar('input_hash', { length: 64 }).notNull(),
     inputPreview: json('input_preview'),
+    recoveryPayload: json('recovery_payload'),
     outputRef: varchar('output_ref', { length: 160 }),
     errorCode: varchar('error_code', { length: 80 }),
     errorMessage: text('error_message'),

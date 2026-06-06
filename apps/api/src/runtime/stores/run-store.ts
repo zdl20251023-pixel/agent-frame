@@ -45,4 +45,8 @@ export interface RunStore {
   getToolInvocationByIdempotencyKey(idempotencyKey: string): Promise<ToolInvocation | null>
   updateToolInvocation(invocationId: string, update: UpdateToolInvocationInput): Promise<void>
   listToolInvocations(runId: string): Promise<ToolInvocation[]>
+  listRecoverableToolInvocations(options: {
+    staleBefore: string
+    limit?: number
+  }): Promise<ToolInvocation[]>
 }

@@ -22,6 +22,13 @@
       "when": 1780760000000,
       "tag": "0002_tool_invocations",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "5",
+      "when": 1780762500000,
+      "tag": "0003_tool_invocation_recovery_payload",
+      "breakpoints": true
     }
   ]
 }

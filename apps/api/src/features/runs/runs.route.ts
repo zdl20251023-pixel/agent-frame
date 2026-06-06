@@ -217,3 +217,20 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     },
     { params: t.Object({ runId: t.String() }) },
   )
+
+  .get(
+    '/:runId/tool-invocations',
+    async ({ authUser, params, set }) => {
+      try {
+        const toolInvocations = await runsService.getToolInvocations(params.runId, authUser!.id)
+        return { runId: params.runId, toolInvocations, total: toolInvocations.length }
+      } catch (err) {
+        if (isAppError(err)) {
+          set.status = err.statusCode
+          return err.toJSON()
+        }
+        throw err
+      }
+    },
+    { params: t.Object({ runId: t.String() }) },
+  )
