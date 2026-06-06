@@ -86,4 +86,33 @@ describe('ToolInvocationRecoveryWorker', () => {
     expect(updated?.status).toBe(TOOL_INVOCATION_STATUS.TIMED_OUT)
     expect(updated?.errorCode).toBe('TOOL_INVOCATION_STALE')
   })
+
+  it('should leave waiting_repair invocations for async repair worker', async () => {
+    const runStore = new MemoryRunStore()
+    const artifactStore = new MemoryArtifactStore()
+    const invocation = await runStore.createToolInvocation({
+      id: 'tinv-waiting-repair',
+      runId: 'run-waiting-repair',
+      stepId: 'step-waiting-repair',
+      toolName: 'nl_to_hand',
+      idempotencyKey: 'run-waiting-repair:nl_to_hand:hash',
+      inputHash: 'hash',
+    })
+    await runStore.updateToolInvocation(invocation.id, {
+      status: TOOL_INVOCATION_STATUS.WAITING_REPAIR,
+      phase: TOOL_INVOCATION_PHASE.INNER_REPAIR,
+      recoveryPayload: { kind: 'agent_task', taskId: 'task-waiting-repair' },
+    })
+
+    const worker = new ToolInvocationRecoveryWorker(runStore, artifactStore, {
+      enabled: false,
+      staleAfterMs: -1,
+    })
+    const recovered = await worker.recoverStaleInvocations()
+
+    expect(recovered).toBe(0)
+    const updated = await runStore.getToolInvocation(invocation.id)
+    expect(updated?.status).toBe(TOOL_INVOCATION_STATUS.WAITING_REPAIR)
+    expect(updated?.phase).toBe(TOOL_INVOCATION_PHASE.INNER_REPAIR)
+  })
 })

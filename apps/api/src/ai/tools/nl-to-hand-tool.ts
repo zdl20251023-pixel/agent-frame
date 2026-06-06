@@ -23,6 +23,8 @@ import type { PromptProvider } from '../../features/agent-tools/prompt-provider'
 type NlToHandToolOptions = {
   promptProvider?: PromptProvider
   messages?: UIMessage[]
+  innerRepairMode?: 'disabled' | 'inner_repair'
+  includeFinalHandJson?: boolean
   innerRepairModel?: LanguageModel
   firstModelStreamStartedAt?: number
 }
@@ -56,6 +58,8 @@ export const nlToHandAgentTool = createAgentToolDefinition<unknown, unknown>({
     const sdkTool = createNlToHandTool({
       promptProvider: options.promptProvider ?? pokerPromptProvider,
       messages: options.messages,
+      innerRepairMode: options.innerRepairMode,
+      includeFinalHandJson: options.includeFinalHandJson,
       innerRepairModel: options.innerRepairModel,
       firstModelStreamStartedAt: options.firstModelStreamStartedAt,
     }) as any

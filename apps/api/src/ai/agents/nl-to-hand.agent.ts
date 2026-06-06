@@ -23,9 +23,15 @@ import {
 import { models } from '../models.js'
 import { toolRegistry } from '../tools/index.js'
 import { NL_TO_HAND_AGENT_ID } from './agent-ids.js'
-import { generateToolInvocationId, generateVersionId, now } from '../../shared/utils/id.js'
+import { generateId, generateRunId, generateToolInvocationId, generateVersionId, now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
 import { SessionsRepository } from '../../features/sessions/sessions.repository.js'
+import { env } from '../../shared/config/env.js'
+import { agentTaskStore } from '../../queues/agent-task.store.js'
+import {
+  NL_TO_HAND_INNER_REPAIR_AGENT_ID,
+  NL_TO_HAND_INNER_REPAIR_TASK_TYPE,
+} from '../../features/agent-tools/nl-to-hand-async.constants.js'
 
 // ============================================================
 // NlToHandAgent — 自然语言转牌谱专用 Agent
@@ -130,7 +136,7 @@ export class NlToHandAgent {
           nlToHandOptions: {
             promptProvider: pokerPromptProvider,
             messages: [],
-            innerRepairModel: this.getRepairModel(),
+            innerRepairMode: 'disabled',
             firstModelStreamStartedAt,
           },
         },
@@ -294,6 +300,28 @@ export class NlToHandAgent {
       })
     }
 
+    const repairTask = !isValid && artifactInfo && lastToolInvocation
+      ? await this.enqueueInnerRepairTask({
+        runId,
+        sessionId: context.sessionId,
+        userMessage,
+        toolInput: lastToolInput,
+        draftArtifactId: artifactInfo.artifactId,
+        draftVersionId: artifactInfo.versionId,
+        toolInvocation: lastToolInvocation,
+      })
+      : undefined
+
+    if (repairTask) {
+      await emitter.emit({
+        type: EVENT_TYPES.MESSAGE_DELTA,
+        runId,
+        agentId: this.agentId,
+        delta: '\n已保存 draft 牌谱，复杂修复已转入后台任务处理。\n',
+        timestamp: now(),
+      })
+    }
+
     if (!fullText.trim()) {
       fullText = this.buildFallbackAnswer(toolOutputText)
       await emitter.emit({
@@ -309,13 +337,63 @@ export class NlToHandAgent {
       output: {
         answer: fullText,
         artifactId: artifactInfo?.artifactId,
-        toolStatus: isValid ? 'success' : lastToolOutput ? 'failed' : 'not_called',
+        toolStatus: isValid ? 'success' : repairTask ? 'repairing' : lastToolOutput ? 'failed' : 'not_called',
       },
     }
   }
 
   private getRepairModel() {
     return (models['deepseek.chat'] ?? models['fast.chat'] ?? models.default).model
+  }
+
+  private async enqueueInnerRepairTask(params: {
+    runId: string
+    sessionId?: string
+    userMessage: string
+    toolInput: unknown
+    draftArtifactId: string
+    draftVersionId: string
+    toolInvocation: ToolInvocation
+  }): Promise<{ taskId: string; childRunId: string } | undefined> {
+    if (!env.DATABASE_URL) return undefined
+
+    const taskId = generateId('task')
+    const childRunId = generateRunId()
+    const idempotencyKey = `${params.toolInvocation.idempotencyKey}:inner_repair`
+    const task = await agentTaskStore.create({
+      id: taskId,
+      parentRunId: params.runId,
+      childRunId,
+      fromAgentId: this.agentId,
+      toAgentId: NL_TO_HAND_INNER_REPAIR_AGENT_ID,
+      input: {
+        type: NL_TO_HAND_INNER_REPAIR_TASK_TYPE,
+        runId: params.runId,
+        sessionId: params.sessionId,
+        userMessage: params.userMessage,
+        toolInput: params.toolInput,
+        draftArtifactId: params.draftArtifactId,
+        draftVersionId: params.draftVersionId,
+        toolInvocationId: params.toolInvocation.id,
+      },
+      idempotencyKey,
+      maxRetries: 2,
+      priority: 3,
+    })
+
+    await this.store.updateToolInvocation(params.toolInvocation.id, {
+      status: TOOL_INVOCATION_STATUS.WAITING_REPAIR,
+      phase: TOOL_INVOCATION_PHASE.INNER_REPAIR,
+      outputRef: params.draftArtifactId,
+      recoveryPayload: {
+        kind: 'agent_task',
+        taskId: task.id,
+        childRunId: task.childRunId,
+      },
+      heartbeatAt: now(),
+    })
+
+    return { taskId: task.id, childRunId: task.childRunId }
   }
 
   private extractMessage(payload: NlToHandPayload): string {

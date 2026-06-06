@@ -431,6 +431,10 @@ type ToolOptionsType = {
   userId?: number
   /** 透传的历史对话消息（供内层修复时对照用户原意） */
   messages?: UIMessage[]
+  /** inner_repair 会触发内层 LLM；disabled 用于同步 Run/SSE baseline 快速返回。 */
+  innerRepairMode?: 'disabled' | 'inner_repair'
+  /** 是否在成功响应中附带最终牌谱 JSON，供异步 Worker 写 ArtifactVersion。 */
+  includeFinalHandJson?: boolean
   /** 内层修复模型，默认 geminiFlashLiteModel，可随时替换为支持 json_schema 的其他 LanguageModel */
   innerRepairModel?: LanguageModel
   /** 外层第 1 次模型流启动时间，用于统计“首次生成牌谱到可执行”的耗时 */
@@ -873,7 +877,12 @@ export function createNlToHandTool(_options: ToolOptionsType) {
           console.info(
             `[nl_to_hand] execute 结束(baseline 即合法)，耗时 ${elapsedMs}ms，即将向 AI SDK 返回工具结果`
           )
-          return buildSuccessResponse(baselineHand)
+          return buildSuccessResponse(baselineHand, _options.includeFinalHandJson)
+        }
+
+        if (_options.innerRepairMode !== 'inner_repair') {
+          console.info('[nl_to_hand] baseline 未通过，同步链路跳过内层 LLM 修复，返回 draft 诊断')
+          return buildBestFailureResponse(baselineSimResult, baselineHand, 0)
         }
 
         // ── Phase 2 内层私有修复回路 ──────────────────────────────────────────
@@ -969,7 +978,7 @@ export function createNlToHandTool(_options: ToolOptionsType) {
               `[nl_to_hand] execute 结束(内层第 ${round} 轮合法)，耗时 ${elapsedMs}ms，即将向 AI SDK 返回工具结果；` +
                 '若前端未收到，请检查该 POST 总时长是否超过网关/浏览器 SSE 超时（常见 60s）'
             )
-            return buildSuccessResponse(fixResult.fixed)
+            return buildSuccessResponse(fixResult.fixed, _options.includeFinalHandJson)
           }
 
           // 更新最佳候选（严重度优先，相同时取 step 更大的）
@@ -1055,17 +1064,20 @@ const SUCCESS_TOOL_SYSTEM_DIRECTIVE =
  *
  * @param handData 最终校验通过的牌谱对象（settlement_validator 已原地填充 stack）
  */
-function buildSuccessResponse(handData: LatestHandType): string {
+function buildSuccessResponse(handData: LatestHandType, includeFinalHandJson = false): string {
   const hasEngineSettlement = handData.result.players.some((p) => p.stack > 0)
+  const finalHandJson = includeFinalHandJson
+    ? `\n[最终牌谱JSON] ${JSON.stringify(handData)}\n`
+    : ''
 
   if (hasEngineSettlement) {
     const settlementJson = JSON.stringify(handData.result.players)
-    const resolvedStr = `合法\n[引擎结算结果] ${settlementJson}\n\n` + SUCCESS_TOOL_SYSTEM_DIRECTIVE
+    const resolvedStr = `合法\n[引擎结算结果] ${settlementJson}${finalHandJson}\n` + SUCCESS_TOOL_SYSTEM_DIRECTIVE
     console.info(`[nl_to_hand] 成功返回：含引擎结算 JSON，总长度 ${resolvedStr.length}`)
     return resolvedStr
   }
 
-  const successStr = `合法\n\n${SUCCESS_TOOL_SYSTEM_DIRECTIVE}`
+  const successStr = `合法${finalHandJson}\n${SUCCESS_TOOL_SYSTEM_DIRECTIVE}`
   console.info(`[nl_to_hand] 成功返回：简洁成功响应，总长度 ${successStr.length}`)
   return successStr
 }

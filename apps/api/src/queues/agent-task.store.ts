@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm'
+import { and, eq, inArray, notInArray } from 'drizzle-orm'
 import { agentTasks } from '../shared/db/schema.js'
 import { getDb } from '../shared/db/client.js'
 import { mysqlNow } from '../shared/utils/id.js'
@@ -55,6 +55,11 @@ export class AgentTaskStore {
   }
 
   async create(task: CreateAgentTaskInput): Promise<AgentTask> {
+    if (task.idempotencyKey) {
+      const existing = await this.findByIdempotencyKey(task.idempotencyKey)
+      if (existing) return existing
+    }
+
     const now = mysqlNow()
     await this.db.insert(agentTasks).values({
       id: task.id,
@@ -104,12 +109,31 @@ export class AgentTaskStore {
     return this.mapRow(rows[0])
   }
 
-  /** 获取待执行任务（供 Worker 轮询，按优先级升序）*/
-  async claimNextPending(workerLimit = 1): Promise<AgentTask[]> {
+  async findByIdempotencyKey(idempotencyKey: string): Promise<AgentTask | null> {
     const rows = await this.db
       .select()
       .from(agentTasks)
-      .where(eq(agentTasks.status, AGENT_TASK_STATUSES.QUEUED))
+      .where(eq(agentTasks.idempotencyKey, idempotencyKey))
+      .limit(1)
+    if (rows.length === 0) return null
+    return this.mapRow(rows[0])
+  }
+
+  /** 获取待执行任务（供 Worker 轮询，按优先级升序）*/
+  async claimNextPending(
+    workerLimit = 1,
+    options: { toAgentId?: string; excludeToAgentIds?: string[] } = {},
+  ): Promise<AgentTask[]> {
+    const filters = [eq(agentTasks.status, AGENT_TASK_STATUSES.QUEUED)]
+    if (options.toAgentId) filters.push(eq(agentTasks.toAgentId, options.toAgentId))
+    if (options.excludeToAgentIds?.length) {
+      filters.push(notInArray(agentTasks.toAgentId, options.excludeToAgentIds))
+    }
+
+    const rows = await this.db
+      .select()
+      .from(agentTasks)
+      .where(and(...filters))
       .limit(workerLimit)
     if (rows.length === 0) return []
 

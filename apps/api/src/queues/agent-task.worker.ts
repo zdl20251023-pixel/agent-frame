@@ -5,6 +5,7 @@ import { agentTaskStore, type AgentTask } from './agent-task.store.js'
 import { RunEventEmitter } from '../runtime/event-emitter.js'
 import { logger } from '../shared/observability/logger.js'
 import { buildA2ACompletedEvent, buildA2AFailedEvent, buildA2AStartedEvent } from '../a2a/a2a-events.js'
+import { NL_TO_HAND_INNER_REPAIR_AGENT_ID } from '../features/agent-tools/nl-to-hand-async.constants.js'
 
 // ============================================================
 // queues/agent-task.worker.ts — 异步 Agent 任务消费者
@@ -67,7 +68,9 @@ export class AgentTaskWorker {
 
     try {
       const batchSize = this.options.batchSize ?? 2
-      const tasks = await agentTaskStore.claimNextPending(batchSize)
+      const tasks = await agentTaskStore.claimNextPending(batchSize, {
+        excludeToAgentIds: [NL_TO_HAND_INNER_REPAIR_AGENT_ID],
+      })
       if (tasks.length === 0) return 0
 
       logger.debug('[AgentTaskWorker] Processing batch', { count: tasks.length })

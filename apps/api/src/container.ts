@@ -49,6 +49,7 @@ import { AgentTaskWorker } from './queues/agent-task.worker.js'
 import { SessionsRepository } from './features/sessions/sessions.repository.js'
 import { SessionSummaryService } from './features/sessions/session-summary.service.js'
 import { ToolInvocationRecoveryWorker } from './runtime/tool-invocation-recovery.worker.js'
+import { NlToHandRepairWorker } from './features/agent-tools/nl-to-hand-repair.worker.js'
 
 // ============================================================
 // 应用依赖容器 — 初始化并组装所有核心组件
@@ -76,6 +77,7 @@ export type AppContainer = {
   memoryRetriever: MemoryRetriever
   agentTaskWorker: AgentTaskWorker
   toolInvocationRecoveryWorker: ToolInvocationRecoveryWorker
+  nlToHandRepairWorker: NlToHandRepairWorker
 }
 
 function createStore(): RunStore {
@@ -194,6 +196,13 @@ export function createContainer(): AppContainer {
   })
   agentTaskWorker.start()
 
+  const nlToHandRepairWorker = new NlToHandRepairWorker(store, artifactStore, new SessionsRepository(), {
+    pollIntervalMs: 3000,
+    batchSize: 1,
+    enabled: !!env.DATABASE_URL,
+  })
+  nlToHandRepairWorker.start()
+
   // ─── ToolInvocation Recovery Worker ───────────────────────
   const toolInvocationRecoveryWorker = new ToolInvocationRecoveryWorker(store, artifactStore, {
     // 只有持久化存储模式需要跨进程重启恢复；内存模式没有可恢复状态源。
@@ -228,6 +237,7 @@ export function createContainer(): AppContainer {
     memoryRetriever,
     agentTaskWorker,
     toolInvocationRecoveryWorker,
+    nlToHandRepairWorker,
   }
 }
 

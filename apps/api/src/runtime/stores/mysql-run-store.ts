@@ -1,4 +1,4 @@
-import { and, asc, eq, desc, inArray, lte } from 'drizzle-orm'
+import { and, asc, eq, desc, lte } from 'drizzle-orm'
 import type {
   Run,
   RunStatus,
@@ -286,10 +286,7 @@ export class MySQLRunStore implements RunStore {
       .from(toolInvocations)
       .where(
         and(
-          inArray(toolInvocations.status, [
-            TOOL_INVOCATION_STATUS.RUNNING,
-            TOOL_INVOCATION_STATUS.WAITING_REPAIR,
-          ]),
+          eq(toolInvocations.status, TOOL_INVOCATION_STATUS.RUNNING),
           lte(toolInvocations.updatedAt, toMySQL(options.staleBefore)),
         ),
       )
