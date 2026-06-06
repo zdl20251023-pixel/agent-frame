@@ -50,7 +50,7 @@ export class ReviewAgent {
 
   async execute(
     input: AgentInput<ReviewPayload>,
-    _context: RunContext,
+    context: RunContext,
   ): Promise<AgentOutput<ReviewOutput>> {
     const { runId, traceId, payload } = input
     const { draft, style, requirements } = payload
@@ -76,6 +76,7 @@ export class ReviewAgent {
         model: 'creative.medium',
         system: REVIEW_SYSTEM,
         prompt: reviewPrompt({ draft: draft.draft, style, requirements }),
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

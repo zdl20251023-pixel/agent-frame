@@ -32,7 +32,7 @@ export class ResearchAgent {
     this.stepManager = new StepManager(store)
   }
 
-  async execute(input: AgentInput<{ query: string }>, _context: RunContext): Promise<AgentOutput<{ findings: string; artifactId?: string }>> {
+  async execute(input: AgentInput<{ query: string }>, context: RunContext): Promise<AgentOutput<{ findings: string; artifactId?: string }>> {
     const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
@@ -55,6 +55,7 @@ export class ResearchAgent {
         model: 'creative.medium',
         system: RESEARCH_SYSTEM,
         prompt: researchPrompt(payload.query),
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

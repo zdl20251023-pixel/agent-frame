@@ -118,6 +118,7 @@ export class VercelAIModelClient implements ModelClient {
           prompt: input.prompt,
           temperature: input.temperature ?? entry.temperature,
           maxOutputTokens: input.maxTokens ?? entry.maxTokens,
+          abortSignal: input.signal,
         })
         return sdkResult
       },
@@ -216,6 +217,7 @@ export class VercelAIModelClient implements ModelClient {
         prompt: input.prompt,
         temperature: input.temperature ?? modelEntry.temperature,
         maxOutputTokens: input.maxTokens ?? modelEntry.maxTokens,
+        abortSignal: input.signal,
       })
 
       for await (const part of result.fullStream) {
@@ -305,6 +307,7 @@ export class VercelAIModelClient implements ModelClient {
         prompt: input.prompt,
         schema: input.schema as ReturnType<typeof z.object>,
         temperature: input.temperature ?? modelEntry.temperature,
+        abortSignal: input.signal,
       })
       return result.object as T
     } catch (err: unknown) {

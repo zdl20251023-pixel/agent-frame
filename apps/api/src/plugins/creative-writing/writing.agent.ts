@@ -49,7 +49,7 @@ export class WritingAgent {
 
   async execute(
     input: AgentInput<WritingPayload>,
-    _context: RunContext,
+    context: RunContext,
   ): Promise<AgentOutput<WritingOutput>> {
     const { runId, traceId, payload } = input
     const { outline, style } = payload
@@ -87,6 +87,7 @@ export class WritingAgent {
             keyPoints: section.keyPoints,
             style,
           }),
+          signal: context.signal,
           metadata: { runId, agentId: this.agentId, traceId, stepId: stepResult.id },
         })) {
           if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

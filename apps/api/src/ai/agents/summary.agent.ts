@@ -33,7 +33,7 @@ export class SummaryAgent {
 
   async execute(
     input: AgentInput<{ content: string; maxLength?: number }>,
-    _context: RunContext,
+    context: RunContext,
   ): Promise<AgentOutput<{ summary: string; artifactId?: string }>> {
     const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
@@ -57,6 +57,7 @@ export class SummaryAgent {
         system: SUMMARY_SYSTEM,
         prompt: summaryPrompt(payload.content),
         maxTokens: 512,
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

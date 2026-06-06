@@ -38,6 +38,7 @@ export type GenerateInput = {
   temperature?: number
   maxTokens?: number
   tools?: ToolDefinition[]
+  signal?: AbortSignal
   metadata?: Record<string, unknown>  // runId、stepId、agentId、traceId
 }
 
@@ -58,6 +59,7 @@ export type StreamInput = {
   temperature?: number
   maxTokens?: number
   tools?: ToolDefinition[]
+  signal?: AbortSignal
   metadata?: Record<string, unknown>
 }
 
@@ -77,6 +79,7 @@ export type GenerateObjectInput = {
   schema: unknown                     // Zod schema 或 JSON Schema
   temperature?: number
   maxTokens?: number
+  signal?: AbortSignal
   metadata?: Record<string, unknown>
 }
 

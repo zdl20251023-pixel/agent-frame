@@ -56,7 +56,7 @@ export class OutlineAgent {
 
   async execute(
     input: AgentInput<OutlinePayload>,
-    _context: RunContext,
+    context: RunContext,
   ): Promise<AgentOutput<OutlineOutput>> {
     const { runId, traceId, payload } = input
     const log = logger.child({ runId, traceId, agentId: this.agentId })
@@ -82,6 +82,7 @@ export class OutlineAgent {
           style: payload.style,
           targetWords: payload.targetWords ?? 1500,
         }),
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

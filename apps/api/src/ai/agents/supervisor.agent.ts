@@ -76,6 +76,7 @@ export class SupervisorAgent {
         model: 'fast.chat',
         system: SUPERVISOR_PLAN_SYSTEM,
         prompt: supervisorPlanPrompt(userPrompt),
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: planStep.id },
       })
 
@@ -164,6 +165,7 @@ export class SupervisorAgent {
         model: 'fast.chat',
         system: SUPERVISOR_ANSWER_SYSTEM,
         prompt: supervisorAnswerPrompt(userPrompt, finalContent),
+        signal: context.signal,
         metadata: { runId, agentId: this.agentId, traceId, stepId: answerStep.id },
       })) {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {

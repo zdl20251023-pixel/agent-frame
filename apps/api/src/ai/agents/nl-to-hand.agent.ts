@@ -111,6 +111,7 @@ export class NlToHandAgent {
         stopWhen: stepCountIs(3),
         temperature: 0.2,
         maxOutputTokens: 4096,
+        abortSignal: context.signal,
       } as never)
 
       for await (const part of result.fullStream) {
