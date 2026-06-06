@@ -14,6 +14,7 @@
 import type { ToolDefinition } from '../model-client/model-client.types.js'
 import type { IPromptProvider } from '../prompts/prompt-provider.js'
 import type { ModelClient } from '../model-client/model-client.js'
+import { z } from 'zod'
 
 // ─── 工厂上下文 ───────────────────────────────────────────────
 
@@ -30,6 +31,9 @@ export type ToolFactoryContext = {
   extra?: Record<string, unknown>
 }
 
+/** Tool 执行上下文；预留给后续需要 runId/userId/模型客户端的工具执行场景。 */
+export type ToolExecutionContext = ToolFactoryContext
+
 // ─── 工厂函数类型 ──────────────────────────────────────────────
 
 /**
@@ -37,6 +41,54 @@ export type ToolFactoryContext = {
  * 每个工具文件导出一个这样的工厂函数。
  */
 export type ToolFactory = (ctx: ToolFactoryContext) => ToolDefinition
+
+/**
+ * AgentToolDefinition 是框架层可复用的工具定义抽象。
+ *
+ * 设计目标：
+ * - name/description/schema 作为稳定元数据，可注册到插件发现层。
+ * - execute 只描述业务执行逻辑，不绑定某个模型供应商 SDK。
+ * - toModelToolDefinition 统一适配 ModelClient 所需的 ToolDefinition。
+ */
+export type AgentToolDefinition<TInput = unknown, TOutput = unknown> = {
+  name: string
+  description: string
+  schema: unknown
+  parameters?: unknown
+  execute: (input: TInput, ctx: ToolExecutionContext) => Promise<TOutput>
+  toModelToolDefinition: (ctx: ToolFactoryContext) => ToolDefinition
+}
+
+/**
+ * 创建通用 Agent 工具定义。
+ *
+ * 参数：
+ * - definition: 工具名称、描述、输入 schema 和执行函数。
+ *
+ * 返回：
+ * - AgentToolDefinition，可同时适配 ToolRegistry、ModelClient 和 PluginRegistry 元数据。
+ */
+export function createAgentToolDefinition<TInput = unknown, TOutput = unknown>(
+  definition: Omit<AgentToolDefinition<TInput, TOutput>, 'toModelToolDefinition'>,
+): AgentToolDefinition<TInput, TOutput> {
+  return {
+    ...definition,
+    toModelToolDefinition: (ctx: ToolFactoryContext): ToolDefinition => ({
+      name: definition.name,
+      description: definition.description,
+      parameters: definition.parameters ?? definition.schema,
+      inputSchema: definition.schema,
+      execute: async (input: unknown) => definition.execute(input as TInput, ctx),
+    }),
+  }
+}
+
+/** 将通用 Agent 工具定义转换为 ToolRegistry 可注册的工厂函数。 */
+export function toToolFactory<TInput = unknown, TOutput = unknown>(
+  definition: AgentToolDefinition<TInput, TOutput>,
+): ToolFactory {
+  return (ctx: ToolFactoryContext) => definition.toModelToolDefinition(ctx)
+}
 
 // ─── 工具注册表 ───────────────────────────────────────────────
 
@@ -97,6 +149,9 @@ export const toolRegistry = new ToolRegistry()
 export const echoToolFactory: ToolFactory = (_ctx: ToolFactoryContext): ToolDefinition => ({
   name: 'echo',
   description: '将输入文本原样返回，用于测试工具调用链路。',
+  inputSchema: z.object({
+    text: z.string().describe('要返回的文本'),
+  }),
   parameters: {
     type: 'object',
     properties: {

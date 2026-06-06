@@ -1,18 +1,19 @@
-import { streamText, stepCountIs } from 'ai'
 import type { AgentInput, AgentOutput } from '@agent-frame/shared'
-import { ARTIFACT_TYPES, EVENT_TYPES, STEP_TYPES } from '@agent-frame/shared'
+import { ARTIFACT_TYPES, EVENT_TYPES, MODEL_STREAM_EVENT_TYPES, STEP_TYPES } from '@agent-frame/shared'
 import type { RunContext } from '../../runtime/run-manager.js'
 import type { RunStore } from '../../runtime/stores/run-store.js'
 import type { ArtifactStore } from '../../artifacts/artifact-store.js'
+import type { ModelClient } from '../model-client/model-client.js'
 import { RunEventEmitter } from '../../runtime/event-emitter.js'
 import { StepManager } from '../../runtime/step-manager.js'
 import { artifactCreatedEvent, artifactVersionCreatedEvent } from '../../artifacts/artifact-events.js'
-import { createNlToHandTool, type LatestHandType } from '../../features/agent-tools/tool_nl_to_hand'
+import type { LatestHandType } from '../../features/agent-tools/tool_nl_to_hand'
 import {
   POKER_OUTER_SYSTEM_PROMPT,
   pokerPromptProvider,
 } from '../../features/agent-tools/poker-prompt-provider'
 import { models } from '../models.js'
+import { toolRegistry } from '../tools/index.js'
 import { NL_TO_HAND_AGENT_ID } from './agent-ids.js'
 import { now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
@@ -22,7 +23,7 @@ import { logger } from '../../shared/observability/logger.js'
 //
 // 设计说明：
 // - 本 Agent 是方案 A 增强版的业务入口，专门负责自然语言牌局结构化。
-// - 当前阶段直接使用 Vercel AI SDK 的 tools 能力，避免先重构全局 ModelClient。
+// - 当前阶段通过 ToolRegistry + ModelClient.stream({ tools }) 使用 nl_to_hand 工具。
 // - 工具调用过程仍映射回框架统一的 Step / AgentEvent / Artifact。
 // ============================================================
 
@@ -60,6 +61,7 @@ export class NlToHandAgent {
   private stepManager: StepManager
 
   constructor(
+    private modelClient: ModelClient,
     private store: RunStore,
     private artifactStore: ArtifactStore,
   ) {
@@ -98,44 +100,44 @@ export class NlToHandAgent {
 
     try {
       const firstModelStreamStartedAt = Date.now()
-      const result = streamText({
-        model: this.getOuterModel(),
-        system: POKER_OUTER_SYSTEM_PROMPT,
-        prompt,
-        tools: {
-          nl_to_hand: createNlToHandTool({
+      const nlToHandTool = toolRegistry.build('nl_to_hand', {
+        extra: {
+          nlToHandOptions: {
             promptProvider: pokerPromptProvider,
             messages: [],
             innerRepairModel: this.getRepairModel(),
             firstModelStreamStartedAt,
-          }),
+          },
         },
-        stopWhen: stepCountIs(3),
-        temperature: 0.2,
-        maxOutputTokens: 4096,
-        abortSignal: context.signal,
-      } as never)
+      })
 
-      for await (const part of result.fullStream) {
+      for await (const event of this.modelClient.stream({
+        model: 'deepseek.chat',
+        system: POKER_OUTER_SYSTEM_PROMPT,
+        prompt,
+        tools: [nlToHandTool],
+        maxSteps: 3,
+        temperature: 0.2,
+        maxTokens: 4096,
+        signal: context.signal,
+        metadata: { runId, agentId: this.agentId, traceId, stepId: modelStep.id },
+      })) {
         if (context.signal.aborted || input.signal?.aborted) break
 
-        const raw = part as any
-        if (raw.type === 'text-delta') {
-          const delta = String(raw.text ?? raw.textDelta ?? '')
-          if (!delta) continue
-          fullText += delta
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TEXT_DELTA) {
+          fullText += event.delta
           await emitter.emit({
             type: EVENT_TYPES.MESSAGE_DELTA,
             runId,
             agentId: this.agentId,
-            delta,
+            delta: event.delta,
             timestamp: now(),
           })
           continue
         }
 
-        if (raw.type === 'tool-call') {
-          lastToolInput = raw.input ?? raw.args
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TOOL_CALL) {
+          lastToolInput = event.input
           const preview = this.buildToolPreview(lastToolInput)
           const toolStep = await this.stepManager.startStep({
             runId,
@@ -143,8 +145,8 @@ export class NlToHandAgent {
             agentId: this.agentId,
             parentStepId: modelStep.id,
             input: {
-              toolName: raw.toolName ?? 'nl_to_hand',
-              toolCallId: raw.toolCallId,
+              toolName: event.toolName,
+              toolCallId: event.toolCallId,
               preview,
               rawInput: lastToolInput,
             },
@@ -155,7 +157,7 @@ export class NlToHandAgent {
             runId,
             stepId: toolStep.id,
             agentId: this.agentId,
-            toolName: raw.toolName ?? 'nl_to_hand',
+            toolName: event.toolName,
             input: preview,
             timestamp: now(),
           })
@@ -169,12 +171,12 @@ export class NlToHandAgent {
           continue
         }
 
-        if (raw.type === 'tool-result') {
-          lastToolOutput = raw.output ?? raw.result
+        if (event.type === MODEL_STREAM_EVENT_TYPES.TOOL_RESULT) {
+          lastToolOutput = event.output
           const preview = this.buildToolResultPreview(lastToolOutput)
           if (lastToolStepId) {
             await this.stepManager.completeStep(lastToolStepId, {
-              toolName: raw.toolName ?? 'nl_to_hand',
+              toolName: event.toolName,
               preview,
               rawOutput: lastToolOutput,
             })
@@ -184,7 +186,7 @@ export class NlToHandAgent {
             runId,
             stepId: lastToolStepId,
             agentId: this.agentId,
-            toolName: raw.toolName ?? 'nl_to_hand',
+            toolName: event.toolName,
             output: preview,
             timestamp: now(),
           })
@@ -238,10 +240,6 @@ export class NlToHandAgent {
         toolStatus: isValid ? 'success' : lastToolOutput ? 'failed' : 'not_called',
       },
     }
-  }
-
-  private getOuterModel() {
-    return (models['deepseek.chat'] ?? models['fast.chat'] ?? models.default).model
   }
 
   private getRepairModel() {

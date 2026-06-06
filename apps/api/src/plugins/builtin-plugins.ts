@@ -6,6 +6,7 @@ import {
   SUMMARY_AGENT_ID,
   NL_TO_HAND_AGENT_ID,
 } from '../ai/agents/agent-ids.js'
+import { getNlToHandPluginToolDefinition } from '../ai/tools/nl-to-hand-tool.js'
 import { pluginRegistry } from './plugin-registry.js'
 import { creativeWritingPlugin } from './creative-writing/index.js'
 
@@ -156,6 +157,8 @@ const nlToHandPlugin: AgentPlugin = {
         },
       },
     })
+
+    ctx.registerTool(getNlToHandPluginToolDefinition())
 
     ctx.log('info', 'NL to Hand plugin registered')
   },

@@ -16,6 +16,8 @@
 // - code-executor.tool.ts — 代码执行（沙箱）
 // ============================================================
 
+import './nl-to-hand-tool.js'
+
 export {
   ToolRegistry,
   toolRegistry,
@@ -23,6 +25,19 @@ export {
 } from './tool-factory.js'
 
 export type {
+  AgentToolDefinition,
   ToolFactory,
   ToolFactoryContext,
+  ToolExecutionContext,
 } from './tool-factory.js'
+
+export {
+  createAgentToolDefinition,
+  toToolFactory,
+} from './tool-factory.js'
+
+export {
+  getNlToHandPluginToolDefinition,
+  nlToHandAgentTool,
+  nlToHandToolFactory,
+} from './nl-to-hand-tool.js'

@@ -231,7 +231,7 @@ export type LatestHandType = z.infer<typeof LatestHandSchema>
  * nl_to_hand 工具 description 主体文本
  * 内外层共用，任何修改只需在此处改一次，不会漂移
  */
-const NL_TO_HAND_DESCRIPTION = `【工具用途】
+export const NL_TO_HAND_DESCRIPTION = `【工具用途】
     将用户的自然语言扑克牌局描述转换为结构化牌谱 JSON，并进行四层合法性校验。
     若校验不通过，返回详细的多行诊断报告，按 [修复建议] 中的 fix_path 和 fix 精准修改后重新调用。
     
@@ -340,7 +340,7 @@ const NL_TO_HAND_DESCRIPTION = `【工具用途】
     `
 
 /** _reasoning 字段 describe 文本（外层 inputSchema 与内层 prompt 共用同一来源） */
-const NL_TO_HAND_REASONING_DESCRIBE =
+export const NL_TO_HAND_REASONING_DESCRIBE =
   '【强制推理步骤 —— 生成前必须在此写出以下内容】\n' +
   '(1) 用户意图解析：牌局描述中涉及到的人数、位置、行动信息；\n' +
   '(2) 座位-位置映射表：dealer_seat=N 时，每个座位对应的 position_tag；\n' +
@@ -352,6 +352,21 @@ const NL_TO_HAND_REASONING_DESCRIBE =
   '    5.3 是否出现 hole_call_list/hole_cards/hand_cards/holecard（任一出现都必须改为 hole_card_list）？\n' +
   '    5.4 actions[*] 的每一项是否都同时包含 action/seat_no/amount 三个字段（禁止省略 action）？\n' +
   '(6) 全局查重：是否有重复牌面（如公共牌发出Ks，手牌也有Ks）？'
+
+/**
+ * nl_to_hand 工具的外层输入 Schema。
+ *
+ * 用途：
+ * - 作为 AI SDK tool(inputSchema) 的运行时约束。
+ * - 作为框架 ToolRegistry / PluginRegistry 共享的工具参数来源。
+ *
+ * 注意：
+ * - game_hand 先允许 unknown，由工具内部的 pre-parse autofix 归一化后再进入 LatestHandSchema 严格校验。
+ */
+export const NlToHandToolInputSchema = z.object({
+  _reasoning: z.string().describe(NL_TO_HAND_REASONING_DESCRIBE).optional(),
+  game_hand: z.unknown().describe('待校验的牌谱候选对象。工具会先做确定性 autofix，再执行严格 Schema 校验。'),
+})
 
 /**
  * 内层修复专用精简描述（P1 优化）
@@ -811,11 +826,7 @@ export function createNlToHandTool(_options: ToolOptionsType) {
   return tool({
     // 复用共享常量，与内层 buildInnerPrompt 同源
     description: NL_TO_HAND_DESCRIPTION,
-    inputSchema: z.object({
-      _reasoning: z.string().describe(NL_TO_HAND_REASONING_DESCRIBE).optional(),
-      // 先允许工具接收大模型的候选对象，再由 pre-parse autofix 归一化后交给 LatestHandSchema 严格校验。
-      game_hand: z.unknown().describe('待校验的牌谱候选对象。工具会先做确定性 autofix，再执行严格 Schema 校验。'),
-    }),
+    inputSchema: NlToHandToolInputSchema,
     execute: async ({ game_hand }) => {
       /** 用于诊断：内层多轮 generateObject 可能使 execute 超过 60s，若客户端/代理先断流，工具虽已 return 但前端收不到 SSE */
       const executeStartedAt = Date.now()

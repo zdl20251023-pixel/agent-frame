@@ -12,7 +12,9 @@ export type { TokenUsage }
 export type ToolDefinition = {
   name: string
   description: string
-  parameters: unknown    // JSON Schema
+  parameters: unknown    // JSON Schema 或文档用途的参数描述
+  /** 运行时输入 schema；当前用于桥接 Vercel AI SDK tool(inputSchema)。 */
+  inputSchema?: unknown
   execute: (input: unknown) => Promise<unknown>
 }
 
@@ -38,6 +40,7 @@ export type GenerateInput = {
   temperature?: number
   maxTokens?: number
   tools?: ToolDefinition[]
+  maxSteps?: number
   signal?: AbortSignal
   metadata?: Record<string, unknown>  // runId、stepId、agentId、traceId
 }
@@ -59,6 +62,7 @@ export type StreamInput = {
   temperature?: number
   maxTokens?: number
   tools?: ToolDefinition[]
+  maxSteps?: number
   signal?: AbortSignal
   metadata?: Record<string, unknown>
 }

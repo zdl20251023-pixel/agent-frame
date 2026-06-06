@@ -1,4 +1,4 @@
-import { generateText, streamText, generateObject as aiGenerateObject } from 'ai'
+import { generateText, streamText, generateObject as aiGenerateObject, stepCountIs, tool as aiTool } from 'ai'
 import { z } from 'zod'
 import type { ModelClient } from './model-client.js'
 import type {
@@ -11,6 +11,7 @@ import type {
   EmbedOutput,
   TokenUsage,
   ToolCall,
+  ToolDefinition,
 } from './model-client.types.js'
 import { models } from '../models.js'
 import { modelRegistry } from './model-registry.js'
@@ -76,9 +77,26 @@ function safeMetaString(metadata: Record<string, unknown> | undefined, key: stri
 
 const AI_SDK_PART_TYPES = {
   TEXT_DELTA: 'text-delta',
+  TOOL_CALL: 'tool-call',
+  TOOL_RESULT: 'tool-result',
   FINISH: 'finish',
   ERROR: 'error',
 } as const
+
+function toAISDKTools(tools: ToolDefinition[] | undefined): Record<string, unknown> | undefined {
+  if (!tools || tools.length === 0) return undefined
+
+  return Object.fromEntries(
+    tools.map((toolDef) => [
+      toolDef.name,
+      aiTool({
+        description: toolDef.description,
+        inputSchema: (toolDef.inputSchema ?? z.unknown()) as never,
+        execute: async (input: unknown) => toolDef.execute(input),
+      }),
+    ]),
+  )
+}
 
 export class VercelAIModelClient implements ModelClient {
   async generate(input: GenerateInput): Promise<GenerateOutput> {
@@ -116,6 +134,8 @@ export class VercelAIModelClient implements ModelClient {
           model: entry.model,
           system: input.system,
           prompt: input.prompt,
+          tools: toAISDKTools(input.tools) as never,
+          stopWhen: input.maxSteps ? (stepCountIs(input.maxSteps) as never) : undefined,
           temperature: input.temperature ?? entry.temperature,
           maxOutputTokens: input.maxTokens ?? entry.maxTokens,
           abortSignal: input.signal,
@@ -215,6 +235,8 @@ export class VercelAIModelClient implements ModelClient {
         model: modelEntry.model,
         system: input.system,
         prompt: input.prompt,
+        tools: toAISDKTools(input.tools) as never,
+        stopWhen: input.maxSteps ? (stepCountIs(input.maxSteps) as never) : undefined,
         temperature: input.temperature ?? modelEntry.temperature,
         maxOutputTokens: input.maxTokens ?? modelEntry.maxTokens,
         abortSignal: input.signal,
@@ -223,6 +245,24 @@ export class VercelAIModelClient implements ModelClient {
       for await (const part of result.fullStream) {
         if (part.type === AI_SDK_PART_TYPES.TEXT_DELTA) {
           yield { type: MODEL_STREAM_EVENT_TYPES.TEXT_DELTA, delta: (part as any).text, timestamp: now() }
+        } else if (part.type === AI_SDK_PART_TYPES.TOOL_CALL) {
+          const raw = part as any
+          yield {
+            type: MODEL_STREAM_EVENT_TYPES.TOOL_CALL,
+            toolCallId: raw.toolCallId,
+            toolName: raw.toolName,
+            input: raw.input ?? raw.args,
+            timestamp: now(),
+          }
+        } else if (part.type === AI_SDK_PART_TYPES.TOOL_RESULT) {
+          const raw = part as any
+          yield {
+            type: MODEL_STREAM_EVENT_TYPES.TOOL_RESULT,
+            toolCallId: raw.toolCallId,
+            toolName: raw.toolName,
+            output: raw.output ?? raw.result,
+            timestamp: now(),
+          }
         } else if (part.type === AI_SDK_PART_TYPES.FINISH) {
           const rawUsage = (part as any).usage ?? (part as any).totalUsage
           finalUsage = normalizeUsage(rawUsage)
