@@ -17,6 +17,8 @@ import { extractUserMessage, buildAssistantText } from '../features/sessions/con
 export type RunContext = {
   runId: string
   traceId: string
+  /** 本次 Run 实际希望执行的入口 Agent；为空时由执行器路由选择默认 Agent。 */
+  agentId?: string
   userId?: string
   sessionId?: string
   signal: AbortSignal
@@ -78,6 +80,7 @@ export class RunManager {
     const context: RunContext = {
       runId,
       traceId,
+      agentId: options.agentId,
       userId: options.userId,
       sessionId: options.sessionId,
       signal,
@@ -141,7 +144,7 @@ export class RunManager {
       const result = await this.executor.execute(agentInput, context)
 
       await this.store.updateRunStatus(runId, RUN_STATUS.COMPLETED, { output: result.output })
-      await this.emitter.emit({ type: EVENT_TYPES.RUN_COMPLETED, runId, agentId: this.executor.agentId, timestamp: now() })
+      await this.emitter.emit({ type: EVENT_TYPES.RUN_COMPLETED, runId, agentId: options.agentId ?? this.executor.agentId, timestamp: now() })
 
       this.scheduleSessionSummaryUpdate(options, result.output)
 

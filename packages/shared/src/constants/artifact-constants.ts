@@ -5,6 +5,7 @@
 export const ARTIFACT_TYPES = {
   SUMMARY: 'summary',
   RESEARCH_REPORT: 'research_report',
+  HAND_HISTORY: 'hand_history',
   // ─── 创意写作插件（阶段 5.6）────────────────────────────────
   OUTLINE: 'outline',                 // 大纲（OutlineAgent 输出）
   DRAFT: 'draft',                     // 初稿（WritingAgent 输出）

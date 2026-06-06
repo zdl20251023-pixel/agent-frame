@@ -1,5 +1,5 @@
-import { google } from '@ai-sdk/google'
+import { deepseek } from '@ai-sdk/deepseek'
 import type { LanguageModel } from 'ai'
 
-// Stub model for agent tool, using gemini-1.5-flash as the underlying model
-export const qwen8bModel: LanguageModel = google('gemini-1.5-flash')
+// nl_to_hand 工具默认修复模型：按当前项目要求统一走 DeepSeek。
+export const qwen8bModel: LanguageModel = deepseek('deepseek-chat')

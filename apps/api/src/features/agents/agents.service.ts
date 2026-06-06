@@ -4,6 +4,7 @@ import {
   SUPERVISOR_AGENT_ID,
   RESEARCH_AGENT_ID,
   SUMMARY_AGENT_ID,
+  NL_TO_HAND_AGENT_ID,
 } from '../../ai/agents/agent-ids.js'
 
 // ============================================================
@@ -90,6 +91,23 @@ const AGENT_METADATA: Record<string, Omit<AgentDetail, 'registered'>> = {
       riskLevel: 'low',
       maxRuntimeMs: 30000,
       outputArtifactTypes: [ARTIFACT_TYPES.SUMMARY],
+      permissions: [],
+    },
+  },
+  [NL_TO_HAND_AGENT_ID]: {
+    id: NL_TO_HAND_AGENT_ID,
+    name: 'NL to Hand Agent',
+    description: '自然语言转牌谱 Agent，将德州扑克牌局描述转换为结构化牌谱并校验',
+    capability: {
+      id: NL_TO_HAND_AGENT_ID,
+      name: 'Natural Language to Hand History',
+      description: '解析自然语言牌局、调用 nl_to_hand 工具校验，并产出 hand_history Artifact',
+      supportedModes: [A2A_CALL_MODES.SYNC],
+      costLevel: 'medium',
+      riskLevel: 'low',
+      maxRuntimeMs: 120000,
+      inputArtifactTypes: [],
+      outputArtifactTypes: [ARTIFACT_TYPES.HAND_HISTORY],
       permissions: [],
     },
   },

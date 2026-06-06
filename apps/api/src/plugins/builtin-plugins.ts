@@ -4,6 +4,7 @@ import {
   SUPERVISOR_AGENT_ID,
   RESEARCH_AGENT_ID,
   SUMMARY_AGENT_ID,
+  NL_TO_HAND_AGENT_ID,
 } from '../ai/agents/agent-ids.js'
 import { pluginRegistry } from './plugin-registry.js'
 import { creativeWritingPlugin } from './creative-writing/index.js'
@@ -126,6 +127,40 @@ const summaryPlugin: AgentPlugin = {
   },
 }
 
+const nlToHandPlugin: AgentPlugin = {
+  id: 'builtin-nl-to-hand',
+  name: '自然语言转牌谱插件',
+  description: '注册 NlToHand Agent，提供德州扑克牌局自然语言结构化与校验能力',
+  register(ctx) {
+    ctx.registerAgent({
+      id: NL_TO_HAND_AGENT_ID,
+      name: 'NL to Hand Agent',
+      description: '将自然语言德州扑克牌局描述转换为结构化牌谱，并通过校验引擎验证合法性',
+      supportedModes: [A2A_CALL_MODES.SYNC],
+      maxRuntimeMs: 120000,
+      costLevel: 'medium',
+      outputArtifactTypes: [ARTIFACT_TYPES.HAND_HISTORY],
+    })
+
+    ctx.registerArtifactType({
+      id: ARTIFACT_TYPES.HAND_HISTORY,
+      name: 'Hand History',
+      description: '由 nl_to_hand 生成并校验通过的结构化德州扑克牌谱',
+      schema: {
+        type: 'object',
+        properties: {
+          rawUserText: { type: 'string' },
+          gameHand: { type: 'object' },
+          validation: { type: 'object' },
+          renderedMarkdown: { type: 'string' },
+        },
+      },
+    })
+
+    ctx.log('info', 'NL to Hand plugin registered')
+  },
+}
+
 /** 内置 Workflow 模板插件 — 定义可复用的 Workflow */
 const builtinWorkflowsPlugin: AgentPlugin = {
   id: 'builtin-workflows',
@@ -189,6 +224,7 @@ export function registerBuiltinPlugins(): void {
     .register(supervisorPlugin)
     .register(researchPlugin)
     .register(summaryPlugin)
+    .register(nlToHandPlugin)
     .register(builtinWorkflowsPlugin)
     .register(creativeWritingPlugin)
 }

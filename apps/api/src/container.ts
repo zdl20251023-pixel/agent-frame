@@ -9,10 +9,13 @@ import { VercelAIModelClient } from './ai/model-client/vercel-ai-model-client.js
 import { SupervisorAgent } from './ai/agents/supervisor.agent.js'
 import { ResearchAgent } from './ai/agents/research.agent.js'
 import { SummaryAgent } from './ai/agents/summary.agent.js'
+import { NlToHandAgent } from './ai/agents/nl-to-hand.agent.js'
+import { AgentExecutorRouter } from './ai/agents/agent-executor-router.js'
 import {
   SUPERVISOR_AGENT_ID,
   RESEARCH_AGENT_ID,
   SUMMARY_AGENT_ID,
+  NL_TO_HAND_AGENT_ID,
 } from './ai/agents/agent-ids.js'
 import {
   OutlineAgent,
@@ -111,6 +114,7 @@ export function createContainer(): AppContainer {
   a2aPolicy.allow(SUPERVISOR_AGENT_ID, [
     RESEARCH_AGENT_ID,
     SUMMARY_AGENT_ID,
+    NL_TO_HAND_AGENT_ID,
     OUTLINE_AGENT_ID,
     WRITING_AGENT_ID,
     REVIEW_AGENT_ID,
@@ -130,18 +134,29 @@ export function createContainer(): AppContainer {
   // ─── 专业 Agent 注册（核心 + 创意写作）────────────────────
   const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
   const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
+  const nlToHandAgent = new NlToHandAgent(store, artifactStore)
   const outlineAgent = new OutlineAgent(modelClient, store, artifactStore)
   const writingAgent = new WritingAgent(modelClient, store, artifactStore)
   const reviewAgent = new ReviewAgent(modelClient, store, artifactStore)
 
   a2aRouter.register(createLocalAgentAdapter(researchAgent))
   a2aRouter.register(createLocalAgentAdapter(summaryAgent))
+  a2aRouter.register(createLocalAgentAdapter(nlToHandAgent))
   a2aRouter.register(createLocalAgentAdapter(outlineAgent))
   a2aRouter.register(createLocalAgentAdapter(writingAgent))
   a2aRouter.register(createLocalAgentAdapter(reviewAgent))
 
   // ─── SupervisorAgent ─────────────────────────────────────
   const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store, memoryRetriever, memoryStore)
+  const executorRouter = new AgentExecutorRouter(SUPERVISOR_AGENT_ID)
+    .register({
+      agentId: SUPERVISOR_AGENT_ID,
+      execute: (input, ctx) => supervisorAgent.execute(input as Parameters<typeof supervisorAgent.execute>[0], ctx),
+    })
+    .register({
+      agentId: NL_TO_HAND_AGENT_ID,
+      execute: (input, ctx) => nlToHandAgent.execute(input as Parameters<typeof nlToHandAgent.execute>[0], ctx),
+    })
 
   // ─── 会话摘要服务 ─────────────────────────────────────────
   const sessionsRepository = new SessionsRepository()
@@ -149,8 +164,8 @@ export function createContainer(): AppContainer {
 
   // ─── RunManager ──────────────────────────────────────────
   const runManager = new RunManager(store, {
-    agentId: SUPERVISOR_AGENT_ID,
-    execute: (input, ctx) => supervisorAgent.execute(input as Parameters<typeof supervisorAgent.execute>[0], ctx),
+    agentId: executorRouter.agentId,
+    execute: (input, ctx) => executorRouter.execute(input, ctx),
   }, sessionSummaryService)
 
   // ─── Workflow 层 ─────────────────────────────────────────

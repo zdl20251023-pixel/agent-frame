@@ -21,6 +21,7 @@ type Props = {
 export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
   const [input, setInput] = useState('')
   const [sessionRuns, setSessionRuns] = useState<SessionRun[]>([])
+  const [agentMode, setAgentMode] = useState<'general' | 'hand-history'>('general')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -63,7 +64,7 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
     try {
       const result = await post<CreateRunResponse>('/runs', {
         input: { message },
-        agentId: 'supervisor-agent',
+        agentId: agentMode === 'hand-history' ? 'nl-to-hand-agent' : 'supervisor-agent',
         sessionId,
       })
       setSessionRuns((prev) => [...prev, { runId: result.runId, userMessage: message }])
@@ -142,13 +143,48 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
           </div>
         )}
 
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+          <button
+            type="button"
+            onClick={() => setAgentMode('general')}
+            disabled={isSubmitting}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '999px',
+              border: agentMode === 'general' ? '1px solid #8b5cf6' : '1px solid rgba(255,255,255,0.12)',
+              background: agentMode === 'general' ? 'rgba(139,92,246,0.18)' : 'rgba(255,255,255,0.04)',
+              color: agentMode === 'general' ? '#ddd6fe' : '#9ca3af',
+              fontSize: '12px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            }}
+          >
+            通用聊天
+          </button>
+          <button
+            type="button"
+            onClick={() => setAgentMode('hand-history')}
+            disabled={isSubmitting}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '999px',
+              border: agentMode === 'hand-history' ? '1px solid #f97316' : '1px solid rgba(255,255,255,0.12)',
+              background: agentMode === 'hand-history' ? 'rgba(249,115,22,0.16)' : 'rgba(255,255,255,0.04)',
+              color: agentMode === 'hand-history' ? '#fed7aa' : '#9ca3af',
+              fontSize: '12px',
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+            }}
+          >
+            牌谱生成
+          </button>
+        </div>
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="输入问题... (Ctrl+Enter 提交)"
+            placeholder={agentMode === 'hand-history' ? '描述一手德州扑克牌局... (Ctrl+Enter 提交)' : '输入问题... (Ctrl+Enter 提交)'}
             rows={2}
             disabled={isSubmitting}
             style={{
