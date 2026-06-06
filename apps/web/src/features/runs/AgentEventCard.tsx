@@ -7,6 +7,29 @@ import { EVENT_TYPES } from '@agent-frame/shared'
 
 type Props = { event: AgentEvent; index: number }
 
+type ToolCallPreview = {
+  playerCount?: number
+  bigBlind?: number
+  heroPosition?: string
+  heroCards?: string
+  actionCount?: number
+  hasFlop?: boolean
+  hasTurn?: boolean
+  hasRiver?: boolean
+}
+
+type ToolResultPreview = {
+  status?: 'success' | 'failed'
+  validationCode?: string
+  errorStep?: number
+  errorPosition?: string
+  errorReason?: string
+  fixPath?: string
+  askUser?: string
+  artifactId?: string
+  versionId?: string
+}
+
 const EVENT_COLORS: Record<string, string> = {
   [EVENT_TYPES.RUN_STARTED]: '#22c55e',
   [EVENT_TYPES.RUN_COMPLETED]: '#3b82f6',
@@ -90,9 +113,9 @@ function formatEventDetails(event: AgentEvent): string {
     case EVENT_TYPES.AGENT_CALL_CANCELLED:
       return `task=${event.taskId} child=${event.childRunId} cancelled${event.reason ? ` — ${event.reason}` : ''}`
     case EVENT_TYPES.TOOL_CALL:
-      return `[${event.agentId}] ${event.toolName}`
+      return formatToolCallSummary(event.toolName, event.input)
     case EVENT_TYPES.TOOL_RESULT:
-      return `[${event.agentId}] ${event.toolName} ✓`
+      return formatToolResultSummary(event.toolName, event.output)
     case EVENT_TYPES.ARTIFACT_CREATED:
       return `type=${event.artifactType}  title=${event.title ?? '-'}`
     case EVENT_TYPES.ARTIFACT_VERSION_CREATED:
@@ -124,6 +147,101 @@ function formatEventDetails(event: AgentEvent): string {
     default:
       return ''
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function formatToolCallSummary(toolName: string, input: unknown): string {
+  if (toolName !== 'nl_to_hand' || !isRecord(input)) return toolName
+  const preview = input as ToolCallPreview
+  const parts = [
+    preview.playerCount ? `${preview.playerCount}人桌` : undefined,
+    preview.bigBlind ? `BB=${preview.bigBlind}` : undefined,
+    preview.heroPosition ? `Hero ${preview.heroPosition}` : undefined,
+    preview.heroCards,
+    preview.actionCount !== undefined ? `${preview.actionCount} actions` : undefined,
+  ].filter(Boolean)
+  return `nl_to_hand 调用：${parts.join(' · ') || '候选牌谱'}`
+}
+
+function formatToolResultSummary(toolName: string, output: unknown): string {
+  if (toolName !== 'nl_to_hand' || !isRecord(output)) return `${toolName} ✓`
+  const preview = output as ToolResultPreview
+  if (preview.status === 'success') return 'nl_to_hand 校验通过'
+  return `nl_to_hand 待修正${preview.validationCode ? `：${preview.validationCode}` : ''}`
+}
+
+function ToolEventDetails({ event }: { event: AgentEvent }) {
+  if (event.type === EVENT_TYPES.TOOL_CALL && event.toolName === 'nl_to_hand' && isRecord(event.input)) {
+    const preview = event.input as ToolCallPreview
+    const streets = [
+      preview.hasFlop ? 'Flop' : undefined,
+      preview.hasTurn ? 'Turn' : undefined,
+      preview.hasRiver ? 'River' : undefined,
+    ].filter(Boolean)
+
+    return (
+      <div style={toolDetailBoxStyle}>
+        <ToolChip label="人数" value={preview.playerCount ? `${preview.playerCount}` : '未知'} />
+        <ToolChip label="BB" value={preview.bigBlind ? `${preview.bigBlind}` : '未知'} />
+        <ToolChip label="Hero" value={[preview.heroPosition, preview.heroCards].filter(Boolean).join(' ') || '未知'} />
+        <ToolChip label="行动" value={preview.actionCount !== undefined ? `${preview.actionCount}` : '未知'} />
+        <ToolChip label="街道" value={streets.length ? streets.join('/') : 'Preflop'} />
+      </div>
+    )
+  }
+
+  if (event.type === EVENT_TYPES.TOOL_RESULT && event.toolName === 'nl_to_hand' && isRecord(event.output)) {
+    const preview = event.output as ToolResultPreview
+    const isSuccess = preview.status === 'success'
+
+    return (
+      <div style={toolDetailBoxStyle}>
+        <ToolChip label="状态" value={isSuccess ? '校验通过' : '待修正'} tone={isSuccess ? 'success' : 'warning'} />
+        {preview.validationCode && <ToolChip label="错误码" value={preview.validationCode} tone="warning" />}
+        {preview.errorStep !== undefined && <ToolChip label="步骤" value={`${preview.errorStep}`} />}
+        {preview.errorPosition && <ToolChip label="位置" value={preview.errorPosition} />}
+        {preview.fixPath && <ToolChip label="fixPath" value={preview.fixPath} />}
+        {preview.errorReason && (
+          <div style={toolMessageStyle}>
+            <strong>原因：</strong>{preview.errorReason}
+          </div>
+        )}
+        {preview.askUser && (
+          <div style={toolAskStyle}>
+            <strong>需要补充：</strong>{preview.askUser}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
+
+function ToolChip({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: string
+  tone?: 'default' | 'success' | 'warning'
+}) {
+  const color = tone === 'success' ? '#86efac' : tone === 'warning' ? '#fdba74' : '#cbd5e1'
+  const border = tone === 'success'
+    ? 'rgba(34,197,94,0.28)'
+    : tone === 'warning'
+      ? 'rgba(249,115,22,0.28)'
+      : 'rgba(148,163,184,0.2)'
+
+  return (
+    <span style={{ ...toolChipStyle, color, borderColor: border }}>
+      <span style={{ color: '#94a3b8' }}>{label}:</span> {value}
+    </span>
+  )
 }
 
 export function AgentEventCard({ event, index }: Props) {
@@ -227,6 +345,7 @@ export function AgentEventCard({ event, index }: Props) {
             </span>
           )}
         </div>
+        <ToolEventDetails event={event} />
       </div>
 
       {/* 时间戳 */}
@@ -248,4 +367,44 @@ export function AgentEventCard({ event, index }: Props) {
       </span>
     </div>
   )
+}
+
+const toolDetailBoxStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '6px',
+  marginTop: '8px',
+}
+
+const toolChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  gap: '4px',
+  alignItems: 'center',
+  padding: '3px 7px',
+  borderRadius: '999px',
+  border: '1px solid',
+  background: 'rgba(15,23,42,0.42)',
+  fontSize: '11px',
+  fontFamily: 'monospace',
+}
+
+const toolMessageStyle: React.CSSProperties = {
+  flexBasis: '100%',
+  color: '#d1d5db',
+  fontSize: '12px',
+  lineHeight: 1.6,
+  padding: '6px 8px',
+  borderRadius: '8px',
+  background: 'rgba(255,255,255,0.035)',
+}
+
+const toolAskStyle: React.CSSProperties = {
+  flexBasis: '100%',
+  color: '#fed7aa',
+  fontSize: '12px',
+  lineHeight: 1.6,
+  padding: '6px 8px',
+  borderRadius: '8px',
+  background: 'rgba(249,115,22,0.10)',
+  border: '1px solid rgba(249,115,22,0.22)',
 }

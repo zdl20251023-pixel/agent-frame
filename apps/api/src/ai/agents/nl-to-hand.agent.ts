@@ -47,6 +47,8 @@ type ToolResultPreview = {
   status: 'success' | 'failed'
   validationCode?: string
   errorStep?: number
+  errorPosition?: string
+  errorReason?: string
   fixPath?: string
   askUser?: string
   artifactId?: string
@@ -204,13 +206,14 @@ export class NlToHandAgent {
 
     const toolOutputText = this.stringifyToolOutput(lastToolOutput)
     const isValid = toolOutputText.startsWith('合法')
-    const artifactInfo = isValid
+    const artifactInfo = lastToolOutput
       ? await this.tryCreateHandHistoryArtifact({
         runId,
         userMessage,
         finalText: fullText,
         toolInput: lastToolInput,
         toolOutputText,
+        status: isValid ? 'valid' : 'draft',
         toolStepId: lastToolStepId,
         emitter,
         log,
@@ -283,6 +286,8 @@ export class NlToHandAgent {
       status: text.startsWith('合法') ? 'success' : 'failed',
       validationCode: this.matchBracketValue(text, '错误码'),
       errorStep: this.matchBracketValue(text, '出错步骤') ? Number(this.matchBracketValue(text, '出错步骤')) : undefined,
+      errorPosition: this.matchBracketValue(text, '出错位置'),
+      errorReason: this.matchBracketValue(text, '错误原因'),
       fixPath: this.matchFixPath(text),
       askUser: this.matchAskUser(text),
     }
@@ -294,6 +299,7 @@ export class NlToHandAgent {
     finalText: string
     toolInput: unknown
     toolOutputText: string
+    status: 'valid' | 'draft'
     toolStepId?: string
     emitter: RunEventEmitter
     log: ReturnType<typeof logger.child>
@@ -315,20 +321,21 @@ export class NlToHandAgent {
         {
           runId: params.runId,
           type: ARTIFACT_TYPES.HAND_HISTORY,
-          title: this.buildArtifactTitle(preview),
+          title: this.buildArtifactTitle(preview, params.status),
           metadata: {
             source: 'nl_to_hand',
-            status: 'valid',
-            summary: this.buildArtifactTitle(preview),
+            status: params.status,
+            summary: this.buildArtifactTitle(preview, params.status),
             ...preview,
           },
         },
         {
           rawUserText: params.userMessage,
           gameHand,
-          validation: { ok: true },
+          validation: this.buildArtifactValidation(params.toolOutputText),
           renderedMarkdown: params.finalText,
           toolResultText: params.toolOutputText,
+          assumptions: [],
           createdBy: {
             runId: params.runId,
             agentId: this.agentId,
@@ -390,6 +397,22 @@ export class NlToHandAgent {
     return text.match(/3\. 请求用户补充：([^\n]+)/)?.[1]?.trim()
   }
 
+  private buildArtifactValidation(toolOutputText: string) {
+    const ok = toolOutputText.startsWith('合法')
+    return {
+      ok,
+      code: ok ? 'OK' : this.matchBracketValue(toolOutputText, '错误码'),
+      message: ok ? '合法' : toolOutputText,
+      step: this.matchBracketValue(toolOutputText, '出错步骤')
+        ? Number(this.matchBracketValue(toolOutputText, '出错步骤'))
+        : undefined,
+      errorPosition: this.matchBracketValue(toolOutputText, '出错位置'),
+      errorReason: this.matchBracketValue(toolOutputText, '错误原因'),
+      fixPath: this.matchFixPath(toolOutputText),
+      askUser: this.matchAskUser(toolOutputText),
+    }
+  }
+
   private buildFallbackAnswer(toolOutputText: string): string {
     if (!toolOutputText) {
       return '我没有成功触发牌谱工具。请确认当前消息是在描述一手德州扑克牌局。'
@@ -400,8 +423,9 @@ export class NlToHandAgent {
     return toolOutputText
   }
 
-  private buildArtifactTitle(preview: ToolPreview): string {
+  private buildArtifactTitle(preview: ToolPreview, status: 'valid' | 'draft' = 'valid'): string {
     const parts = [
+      status === 'draft' ? '待补充牌谱' : undefined,
       preview.playerCount ? `${preview.playerCount}人桌` : '牌谱',
       preview.heroPosition ? `Hero ${preview.heroPosition}` : undefined,
       preview.heroCards,

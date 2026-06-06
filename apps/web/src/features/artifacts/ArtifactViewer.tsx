@@ -3,6 +3,7 @@ import type { ArtifactVersion } from '@agent-frame/shared'
 import { useArtifact } from './useArtifact.ts'
 import { useArtifactVersions } from './useArtifactVersions.ts'
 import type { ArtifactContent } from './useArtifact.ts'
+import { HandHistoryPanel } from './HandHistoryPanel.tsx'
 
 // ============================================================
 // ArtifactViewer — 完整产物展示组件
@@ -115,6 +116,11 @@ export function ArtifactViewer({ artifactId, showVersionHistory = false }: Artif
 
 function ArtifactContentRenderer({ content }: { content: ArtifactContent }) {
   const raw = content.content
+
+  // hand_history：自然语言转牌谱专用展示
+  if (content.type === 'hand_history') {
+    return <HandHistoryPanel content={content} />
+  }
 
   // summary / report：纯文本段落
   if (content.type === 'summary' || content.type === 'report') {
@@ -250,6 +256,7 @@ function getArtifactIcon(type: string): string {
     script: '🎬',
     data: '🗃️',
     research_report: '🔬',
+    hand_history: '🃏',
     analysis: '🧠',
   }
   return icons[type] ?? '📎'

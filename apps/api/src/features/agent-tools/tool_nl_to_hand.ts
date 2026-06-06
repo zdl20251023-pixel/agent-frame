@@ -17,7 +17,7 @@ import {
   type HandValidationResult,
   simulateHand,
 } from '../hand_validator/simulator/hand_simulator.js'
-import { logAutoFixSummary, runPostParseAutoFix } from './autofix_pipeline'
+import { logAutoFixSummary, runPostParseAutoFix, runPreParseAutoFix } from './autofix_pipeline'
 import { qwen8bModel } from './models'
 import type { PromptProvider } from './prompt-provider'
 
@@ -813,8 +813,8 @@ export function createNlToHandTool(_options: ToolOptionsType) {
     description: NL_TO_HAND_DESCRIPTION,
     inputSchema: z.object({
       _reasoning: z.string().describe(NL_TO_HAND_REASONING_DESCRIBE).optional(),
-      // 外层使用严格模式：不处理 hole_card_list 字段名错误，允许在工具层直接拦截。
-      game_hand: LatestHandSchema.describe('待校验的牌谱对象（严格模式）。'),
+      // 先允许工具接收大模型的候选对象，再由 pre-parse autofix 归一化后交给 LatestHandSchema 严格校验。
+      game_hand: z.unknown().describe('待校验的牌谱候选对象。工具会先做确定性 autofix，再执行严格 Schema 校验。'),
     }),
     execute: async ({ game_hand }) => {
       /** 用于诊断：内层多轮 generateObject 可能使 execute 超过 60s，若客户端/代理先断流，工具虽已 return 但前端收不到 SSE */
@@ -830,7 +830,10 @@ export function createNlToHandTool(_options: ToolOptionsType) {
       )
       try {
         // ── Phase 1 Baseline：schema → autofix → simulateHand ─────────────────
-        const parseResult = LatestHandSchema.safeParse(game_hand)
+        const preFixResult = runPreParseAutoFix(game_hand)
+        logAutoFixSummary('A', preFixResult.patches)
+
+        const parseResult = LatestHandSchema.safeParse(preFixResult.fixed)
         if (!parseResult.success) {
           const firstError = parseResult.error.issues[0]
           if (!firstError) {
