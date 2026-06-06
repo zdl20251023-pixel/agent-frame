@@ -11,6 +11,8 @@ export type CreateArtifactInput = {
   title?: string
   projectId?: string
   metadata?: Record<string, unknown>
+  /** 幂等键：相同 key 的首次版本写入应复用同一 Artifact。 */
+  idempotencyKey?: string
 }
 
 export type CreateArtifactVersionInput = {
@@ -41,7 +43,7 @@ export interface ArtifactStore {
   createArtifactWithVersion(
     artifactInput: Omit<CreateArtifactInput, 'id'>,
     content: unknown,
-    context: { runId: string; stepId?: string; agentId?: string },
+    context: { runId: string; stepId?: string; agentId?: string; idempotencyKey?: string },
   ): Promise<{ artifact: Artifact; version: ArtifactVersion }>
 
   /** 更新 currentVersionId */

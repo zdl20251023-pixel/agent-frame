@@ -7,11 +7,14 @@ import type {
   CreateRunInput,
   CreateStepInput,
   UpdateStepInput,
+  ToolInvocation,
+  CreateToolInvocationInput,
+  UpdateToolInvocationInput,
 } from '@agent-frame/shared'
-import { RUN_STATUS, STEP_STATUS } from '@agent-frame/shared'
+import { RUN_STATUS, STEP_STATUS, TOOL_INVOCATION_PHASE, TOOL_INVOCATION_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './run-store.js'
 import { getDb } from '../../shared/db/client.js'
-import { runs, steps, runEvents } from '../../shared/db/schema.js'
+import { runs, steps, runEvents, toolInvocations } from '../../shared/db/schema.js'
 import { mysqlNow, toMySQL } from '../../shared/db/datetime.js'
 import { logger } from '../../shared/observability/logger.js'
 import { AppError } from '../../shared/errors/app-error.js'
@@ -192,6 +195,89 @@ export class MySQLRunStore implements RunStore {
     return rows.map((r) => r.eventData as AgentEvent)
   }
 
+  // ─── ToolInvocation 操作 ───────────────────────────────────
+
+  async createToolInvocation(input: CreateToolInvocationInput): Promise<ToolInvocation> {
+    const existing = await this.getToolInvocationByIdempotencyKey(input.idempotencyKey)
+    if (existing) return existing
+
+    const ts = mysqlNow()
+    await this.db.insert(toolInvocations).values({
+      id: input.id,
+      runId: input.runId,
+      stepId: input.stepId,
+      toolName: input.toolName,
+      idempotencyKey: input.idempotencyKey,
+      status: TOOL_INVOCATION_STATUS.PENDING,
+      phase: TOOL_INVOCATION_PHASE.CREATED,
+      inputHash: input.inputHash,
+      inputPreview: input.inputPreview ?? null,
+      outputRef: null,
+      errorCode: null,
+      errorMessage: null,
+      startedAt: null,
+      heartbeatAt: null,
+      finishedAt: null,
+      retryCount: 0,
+      createdAt: ts,
+      updatedAt: ts,
+    })
+
+    const invocation = await this.getToolInvocation(input.id)
+    if (!invocation) throw new AppError('INTERNAL_ERROR', 'Failed to create tool invocation in MySQL')
+    return invocation
+  }
+
+  async getToolInvocation(invocationId: string): Promise<ToolInvocation | null> {
+    const rows = await this.db
+      .select()
+      .from(toolInvocations)
+      .where(eq(toolInvocations.id, invocationId))
+      .limit(1)
+
+    if (rows.length === 0) return null
+    return this.mapToolInvocation(rows[0])
+  }
+
+  async getToolInvocationByIdempotencyKey(idempotencyKey: string): Promise<ToolInvocation | null> {
+    const rows = await this.db
+      .select()
+      .from(toolInvocations)
+      .where(eq(toolInvocations.idempotencyKey, idempotencyKey))
+      .limit(1)
+
+    if (rows.length === 0) return null
+    return this.mapToolInvocation(rows[0])
+  }
+
+  async updateToolInvocation(invocationId: string, update: UpdateToolInvocationInput): Promise<void> {
+    await this.db
+      .update(toolInvocations)
+      .set({
+        status: update.status,
+        phase: update.phase,
+        outputRef: update.outputRef,
+        errorCode: update.errorCode,
+        errorMessage: update.errorMessage,
+        heartbeatAt: update.heartbeatAt ? toMySQL(update.heartbeatAt) : undefined,
+        finishedAt: update.finishedAt ? toMySQL(update.finishedAt) : undefined,
+        retryCount: update.retryCount,
+        startedAt: update.status === TOOL_INVOCATION_STATUS.RUNNING ? mysqlNow() : undefined,
+        updatedAt: mysqlNow(),
+      })
+      .where(eq(toolInvocations.id, invocationId))
+  }
+
+  async listToolInvocations(runId: string): Promise<ToolInvocation[]> {
+    const rows = await this.db
+      .select()
+      .from(toolInvocations)
+      .where(eq(toolInvocations.runId, runId))
+      .orderBy(toolInvocations.createdAt)
+
+    return rows.map(this.mapToolInvocation)
+  }
+
   // ─── 映射函数 ────────────────────────────────────────────
 
   // 使用箭头函数属性避免 .map(this.mapRun) 时 this 丢失
@@ -229,4 +315,25 @@ export class MySQLRunStore implements RunStore {
       endedAt: row.endedAt ?? undefined,
     }
   }
+
+  private mapToolInvocation = (row: typeof toolInvocations.$inferSelect): ToolInvocation => ({
+    id: row.id,
+    runId: row.runId,
+    stepId: row.stepId,
+    toolName: row.toolName,
+    idempotencyKey: row.idempotencyKey,
+    status: row.status as ToolInvocation['status'],
+    phase: row.phase as ToolInvocation['phase'],
+    inputHash: row.inputHash,
+    inputPreview: row.inputPreview ?? undefined,
+    outputRef: row.outputRef ?? undefined,
+    errorCode: row.errorCode ?? undefined,
+    errorMessage: row.errorMessage ?? undefined,
+    startedAt: row.startedAt ?? undefined,
+    heartbeatAt: row.heartbeatAt ?? undefined,
+    finishedAt: row.finishedAt ?? undefined,
+    retryCount: row.retryCount,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  })
 }

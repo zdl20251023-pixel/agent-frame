@@ -5,6 +5,12 @@ import type { SessionTranscript } from '@agent-frame/shared'
 
 type SessionRun = { runId: string; userMessage: string }
 
+type ActiveHandHistoryEdit = {
+  artifactId: string
+  baseVersionId: string
+  title?: string
+}
+
 type CreateRunResponse = {
   runId: string
   traceId: string
@@ -22,6 +28,7 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
   const [input, setInput] = useState('')
   const [sessionRuns, setSessionRuns] = useState<SessionRun[]>([])
   const [agentMode, setAgentMode] = useState<'general' | 'hand-history'>('general')
+  const [activeHandHistoryEdit, setActiveHandHistoryEdit] = useState<ActiveHandHistoryEdit | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -53,6 +60,21 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
     return () => observer.disconnect()
   }, [])
 
+  useEffect(() => {
+    function handleContinueEdit(event: Event) {
+      const detail = (event as CustomEvent<ActiveHandHistoryEdit>).detail
+      if (!detail?.artifactId || !detail.baseVersionId) return
+
+      setAgentMode('hand-history')
+      setActiveHandHistoryEdit(detail)
+      setInput((prev) => prev || '请描述要基于这版牌谱修改什么...')
+      textareaRef.current?.focus()
+    }
+
+    window.addEventListener('hand-history:continue-edit', handleContinueEdit)
+    return () => window.removeEventListener('hand-history:continue-edit', handleContinueEdit)
+  }, [])
+
   async function handleSubmit(e?: FormEvent) {
     e?.preventDefault()
     const message = input.trim()
@@ -63,12 +85,27 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
 
     try {
       const result = await post<CreateRunResponse>('/runs', {
-        input: { message },
+        input: {
+          message,
+          ...(agentMode === 'hand-history' && activeHandHistoryEdit
+            ? {
+              command: {
+                type: 'patch_from_nl',
+                artifactId: activeHandHistoryEdit.artifactId,
+                baseVersionId: activeHandHistoryEdit.baseVersionId,
+                patchText: message,
+              },
+            }
+            : agentMode === 'hand-history'
+              ? { command: { type: 'create_from_nl', rawText: message } }
+              : {}),
+        },
         agentId: agentMode === 'hand-history' ? 'nl-to-hand-agent' : 'supervisor-agent',
         sessionId,
       })
       setSessionRuns((prev) => [...prev, { runId: result.runId, userMessage: message }])
       setInput('')
+      setActiveHandHistoryEdit(null)
       textareaRef.current?.focus()
       onSessionActivity()
     } catch (err) {
@@ -178,13 +215,33 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
           </button>
         </div>
 
+        {activeHandHistoryEdit && agentMode === 'hand-history' && (
+          <div style={activeEditNoticeStyle}>
+            正在基于当前牌谱继续修改：
+            <code>{activeHandHistoryEdit.artifactId.slice(0, 16)}...</code>
+            <button
+              type="button"
+              onClick={() => setActiveHandHistoryEdit(null)}
+              style={clearEditButtonStyle}
+            >
+              取消
+            </button>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
           <textarea
             ref={textareaRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={agentMode === 'hand-history' ? '描述一手德州扑克牌局... (Ctrl+Enter 提交)' : '输入问题... (Ctrl+Enter 提交)'}
+            placeholder={
+              agentMode === 'hand-history'
+                ? activeHandHistoryEdit
+                  ? '描述要基于当前牌谱修改的内容... (Ctrl+Enter 提交)'
+                  : '描述一手德州扑克牌局... (Ctrl+Enter 提交)'
+                : '输入问题... (Ctrl+Enter 提交)'
+            }
             rows={2}
             disabled={isSubmitting}
             style={{
@@ -220,4 +277,28 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
       </div>
     </div>
   )
+}
+
+const activeEditNoticeStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  marginBottom: '10px',
+  padding: '8px 10px',
+  borderRadius: '10px',
+  border: '1px solid rgba(249,115,22,0.25)',
+  background: 'rgba(249,115,22,0.1)',
+  color: '#fed7aa',
+  fontSize: '12px',
+}
+
+const clearEditButtonStyle: React.CSSProperties = {
+  marginLeft: 'auto',
+  border: '1px solid rgba(255,255,255,0.14)',
+  background: 'rgba(255,255,255,0.06)',
+  color: '#e5e7eb',
+  borderRadius: '999px',
+  padding: '4px 8px',
+  cursor: 'pointer',
+  fontSize: '12px',
 }

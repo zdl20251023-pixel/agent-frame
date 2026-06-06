@@ -134,7 +134,7 @@ export function createContainer(): AppContainer {
   // ─── 专业 Agent 注册（核心 + 创意写作）────────────────────
   const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
   const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
-  const nlToHandAgent = new NlToHandAgent(modelClient, store, artifactStore)
+  const nlToHandAgent = new NlToHandAgent(modelClient, store, artifactStore, new SessionsRepository())
   const outlineAgent = new OutlineAgent(modelClient, store, artifactStore)
   const writingAgent = new WritingAgent(modelClient, store, artifactStore)
   const reviewAgent = new ReviewAgent(modelClient, store, artifactStore)

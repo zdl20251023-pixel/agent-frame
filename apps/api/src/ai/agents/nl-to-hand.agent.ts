@@ -1,5 +1,13 @@
-import type { AgentInput, AgentOutput } from '@agent-frame/shared'
-import { ARTIFACT_TYPES, EVENT_TYPES, MODEL_STREAM_EVENT_TYPES, STEP_TYPES } from '@agent-frame/shared'
+import type { AgentInput, AgentOutput, ArtifactVersion, ToolInvocation } from '@agent-frame/shared'
+import {
+  ARTIFACT_TYPES,
+  EVENT_TYPES,
+  MODEL_STREAM_EVENT_TYPES,
+  STEP_TYPES,
+  TOOL_INVOCATION_PHASE,
+  TOOL_INVOCATION_STATUS,
+} from '@agent-frame/shared'
+import { createHash } from 'node:crypto'
 import type { RunContext } from '../../runtime/run-manager.js'
 import type { RunStore } from '../../runtime/stores/run-store.js'
 import type { ArtifactStore } from '../../artifacts/artifact-store.js'
@@ -15,8 +23,9 @@ import {
 import { models } from '../models.js'
 import { toolRegistry } from '../tools/index.js'
 import { NL_TO_HAND_AGENT_ID } from './agent-ids.js'
-import { now } from '../../shared/utils/id.js'
+import { generateToolInvocationId, generateVersionId, now } from '../../shared/utils/id.js'
 import { logger } from '../../shared/observability/logger.js'
+import { SessionsRepository } from '../../features/sessions/sessions.repository.js'
 
 // ============================================================
 // NlToHandAgent — 自然语言转牌谱专用 Agent
@@ -31,6 +40,19 @@ export { NL_TO_HAND_AGENT_ID }
 
 type NlToHandPayload = {
   message?: string
+  command?: HandHistoryCommand
+}
+
+type HandHistoryCommand =
+  | { type: 'create_from_nl'; rawText?: string }
+  | { type: 'patch_from_nl'; artifactId?: string; baseVersionId?: string; patchText?: string }
+  | { type: 'replace_json'; artifactId?: string; baseVersionId?: string; gameHand: unknown }
+
+type ResolvedHandHistoryCommandContext = {
+  type: 'patch_from_nl'
+  artifactId: string
+  baseVersionId: string
+  baseGameHand: unknown
 }
 
 type ToolPreview = {
@@ -64,6 +86,7 @@ export class NlToHandAgent {
     private modelClient: ModelClient,
     private store: RunStore,
     private artifactStore: ArtifactStore,
+    private sessionsRepository?: SessionsRepository,
   ) {
     this.stepManager = new StepManager(store)
   }
@@ -76,7 +99,8 @@ export class NlToHandAgent {
     const log = logger.child({ runId, traceId, agentId: this.agentId })
     const emitter = new RunEventEmitter(this.store)
     const userMessage = this.extractMessage(payload)
-    const prompt = this.buildPrompt(userMessage, input.conversationContext?.promptText)
+    const commandContext = await this.resolveCommandContext(payload, context.sessionId)
+    const prompt = this.buildPrompt(userMessage, input.conversationContext?.promptText, commandContext)
 
     const modelStep = await this.stepManager.startStep({
       runId,
@@ -97,6 +121,7 @@ export class NlToHandAgent {
     let lastToolInput: unknown
     let lastToolOutput: unknown
     let lastToolStepId: string | undefined
+    let lastToolInvocation: ToolInvocation | undefined
 
     try {
       const firstModelStreamStartedAt = Date.now()
@@ -139,6 +164,8 @@ export class NlToHandAgent {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TOOL_CALL) {
           lastToolInput = event.input
           const preview = this.buildToolPreview(lastToolInput)
+          const inputHash = this.hashUnknown(lastToolInput)
+          const idempotencyKey = this.buildToolIdempotencyKey(runId, event.toolName, inputHash)
           const toolStep = await this.stepManager.startStep({
             runId,
             type: STEP_TYPES.TOOL_CALL,
@@ -147,15 +174,31 @@ export class NlToHandAgent {
             input: {
               toolName: event.toolName,
               toolCallId: event.toolCallId,
+              idempotencyKey,
               preview,
               rawInput: lastToolInput,
             },
           })
           lastToolStepId = toolStep.id
+          lastToolInvocation = await this.store.createToolInvocation({
+            id: generateToolInvocationId(),
+            runId,
+            stepId: toolStep.id,
+            toolName: event.toolName,
+            idempotencyKey,
+            inputHash,
+            inputPreview: preview,
+          })
+          await this.store.updateToolInvocation(lastToolInvocation.id, {
+            status: TOOL_INVOCATION_STATUS.RUNNING,
+            phase: TOOL_INVOCATION_PHASE.PRE_PARSE_AUTOFIX,
+            heartbeatAt: now(),
+          })
           await emitter.emit({
             type: EVENT_TYPES.TOOL_CALL,
             runId,
             stepId: toolStep.id,
+            toolInvocationId: lastToolInvocation.id,
             agentId: this.agentId,
             toolName: event.toolName,
             input: preview,
@@ -174,9 +217,17 @@ export class NlToHandAgent {
         if (event.type === MODEL_STREAM_EVENT_TYPES.TOOL_RESULT) {
           lastToolOutput = event.output
           const preview = this.buildToolResultPreview(lastToolOutput)
+          if (lastToolInvocation) {
+            await this.store.updateToolInvocation(lastToolInvocation.id, {
+              status: TOOL_INVOCATION_STATUS.RUNNING,
+              phase: TOOL_INVOCATION_PHASE.SIMULATE_HAND,
+              heartbeatAt: now(),
+            })
+          }
           if (lastToolStepId) {
             await this.stepManager.completeStep(lastToolStepId, {
               toolName: event.toolName,
+              toolInvocationId: lastToolInvocation?.id,
               preview,
               rawOutput: lastToolOutput,
             })
@@ -185,6 +236,7 @@ export class NlToHandAgent {
             type: EVENT_TYPES.TOOL_RESULT,
             runId,
             stepId: lastToolStepId,
+            toolInvocationId: lastToolInvocation?.id,
             agentId: this.agentId,
             toolName: event.toolName,
             output: preview,
@@ -200,6 +252,15 @@ export class NlToHandAgent {
     } catch (err) {
       await this.stepManager.failStep(modelStep.id, err)
       if (lastToolStepId) await this.stepManager.failStep(lastToolStepId, err)
+      if (lastToolInvocation) {
+        await this.store.updateToolInvocation(lastToolInvocation.id, {
+          status: TOOL_INVOCATION_STATUS.FAILED,
+          phase: TOOL_INVOCATION_PHASE.COMPLETED,
+          errorCode: err instanceof Error ? err.name : 'TOOL_INVOCATION_FAILED',
+          errorMessage: err instanceof Error ? err.message : String(err),
+          finishedAt: now(),
+        })
+      }
       log.error('[NlToHandAgent] outer model/tool execution failed', {
         errorCode: err instanceof Error ? err.message : 'NL_TO_HAND_FAILED',
       })
@@ -211,16 +272,27 @@ export class NlToHandAgent {
     const artifactInfo = lastToolOutput
       ? await this.tryCreateHandHistoryArtifact({
         runId,
+        sessionId: context.sessionId,
         userMessage,
         finalText: fullText,
         toolInput: lastToolInput,
         toolOutputText,
         status: isValid ? 'valid' : 'draft',
         toolStepId: lastToolStepId,
+        toolInvocation: lastToolInvocation,
+        commandContext,
         emitter,
         log,
       })
       : undefined
+
+    if (lastToolInvocation && !artifactInfo) {
+      await this.store.updateToolInvocation(lastToolInvocation.id, {
+        status: TOOL_INVOCATION_STATUS.SUCCEEDED,
+        phase: TOOL_INVOCATION_PHASE.COMPLETED,
+        finishedAt: now(),
+      })
+    }
 
     if (!fullText.trim()) {
       fullText = this.buildFallbackAnswer(toolOutputText)
@@ -250,9 +322,24 @@ export class NlToHandAgent {
     return typeof payload?.message === 'string' ? payload.message : ''
   }
 
-  private buildPrompt(userMessage: string, contextPrompt?: string): string {
+  private buildPrompt(
+    userMessage: string,
+    contextPrompt?: string,
+    commandContext?: ResolvedHandHistoryCommandContext,
+  ): string {
     return [
       contextPrompt ? `[会话上下文]\n${contextPrompt}` : '',
+      commandContext?.baseGameHand
+        ? [
+          '[当前正在编辑的基础牌谱 JSON]',
+          JSON.stringify(commandContext.baseGameHand),
+          '',
+          '[编辑指令]',
+          '用户本轮是在修改上一版 hand_history。请优先保留基础牌谱中未被用户明确修改的字段，只根据当前用户描述做最小必要变更。',
+          `baseArtifactId=${commandContext.artifactId}`,
+          `baseVersionId=${commandContext.baseVersionId}`,
+        ].join('\n')
+        : '',
       '[当前用户牌局描述]',
       userMessage,
       '',
@@ -293,12 +380,15 @@ export class NlToHandAgent {
 
   private async tryCreateHandHistoryArtifact(params: {
     runId: string
+    sessionId?: string
     userMessage: string
     finalText: string
     toolInput: unknown
     toolOutputText: string
     status: 'valid' | 'draft'
     toolStepId?: string
+    toolInvocation?: ToolInvocation
+    commandContext?: ResolvedHandHistoryCommandContext
     emitter: RunEventEmitter
     log: ReturnType<typeof logger.child>
   }): Promise<{ artifactId: string; versionId: string } | undefined> {
@@ -314,45 +404,92 @@ export class NlToHandAgent {
     })
 
     try {
+      if (params.toolInvocation) {
+        await this.store.updateToolInvocation(params.toolInvocation.id, {
+          status: TOOL_INVOCATION_STATUS.RUNNING,
+          phase: TOOL_INVOCATION_PHASE.ARTIFACT_WRITE,
+          heartbeatAt: now(),
+        })
+      }
       const preview = this.buildToolPreview(params.toolInput)
-      const { artifact, version } = await this.artifactStore.createArtifactWithVersion(
-        {
+      const idempotencyKey = params.toolInvocation
+        ? `${params.toolInvocation.idempotencyKey}:artifact`
+        : undefined
+      const content = {
+        rawUserText: params.userMessage,
+        gameHand,
+        validation: this.buildArtifactValidation(params.toolOutputText),
+        handHistoryState: {
+          status: params.status === 'valid' ? 'valid' : 'draft',
+          baseArtifactId: params.commandContext?.artifactId,
+          baseVersionId: params.commandContext?.baseVersionId,
+          commandType: params.commandContext?.type ?? 'create_from_nl',
+        },
+        renderedMarkdown: params.finalText,
+        toolResultText: params.toolOutputText,
+        assumptions: [],
+        createdBy: {
           runId: params.runId,
-          type: ARTIFACT_TYPES.HAND_HISTORY,
-          title: this.buildArtifactTitle(preview, params.status),
-          metadata: {
-            source: 'nl_to_hand',
-            status: params.status,
-            summary: this.buildArtifactTitle(preview, params.status),
-            ...preview,
-          },
+          agentId: this.agentId,
+          toolName: 'nl_to_hand',
+          toolInvocationId: params.toolInvocation?.id,
         },
-        {
-          rawUserText: params.userMessage,
-          gameHand,
-          validation: this.buildArtifactValidation(params.toolOutputText),
-          renderedMarkdown: params.finalText,
-          toolResultText: params.toolOutputText,
-          assumptions: [],
-          createdBy: {
+      }
+
+      const isPatch = Boolean(params.commandContext?.artifactId && params.commandContext.baseVersionId)
+      const artifactTitle = this.buildArtifactTitle(preview, params.status)
+      const result = isPatch
+        ? await this.createPatchedHandHistoryVersion({
+          artifactId: params.commandContext!.artifactId,
+          baseVersionId: params.commandContext!.baseVersionId,
+          runId: params.runId,
+          stepId: artifactStep.id,
+          content,
+          diffSummary: params.userMessage,
+        })
+        : await this.artifactStore.createArtifactWithVersion(
+          {
             runId: params.runId,
-            agentId: this.agentId,
-            toolName: 'nl_to_hand',
+            type: ARTIFACT_TYPES.HAND_HISTORY,
+            title: artifactTitle,
+            idempotencyKey,
+            metadata: {
+              source: 'nl_to_hand',
+              status: params.status,
+              state: params.status === 'valid' ? 'valid' : 'draft',
+              toolInvocationId: params.toolInvocation?.id,
+              idempotencyKey,
+              summary: artifactTitle,
+              ...preview,
+            },
           },
-        },
-        { runId: params.runId, stepId: artifactStep.id, agentId: this.agentId },
-      )
+          content,
+          { runId: params.runId, stepId: artifactStep.id, agentId: this.agentId, idempotencyKey },
+        )
+
+      const { artifact, version } = result
 
       await this.stepManager.completeStep(artifactStep.id, {
         artifactId: artifact.id,
         versionId: version.id,
+        toolInvocationId: params.toolInvocation?.id,
       })
-      await params.emitter.emit(artifactCreatedEvent({
-        runId: params.runId,
-        artifactId: artifact.id,
-        artifactType: ARTIFACT_TYPES.HAND_HISTORY,
-        title: artifact.title,
-      }))
+      if (params.toolInvocation) {
+        await this.store.updateToolInvocation(params.toolInvocation.id, {
+          status: TOOL_INVOCATION_STATUS.SUCCEEDED,
+          phase: TOOL_INVOCATION_PHASE.COMPLETED,
+          outputRef: artifact.id,
+          finishedAt: now(),
+        })
+      }
+      if (!isPatch) {
+        await params.emitter.emit(artifactCreatedEvent({
+          runId: params.runId,
+          artifactId: artifact.id,
+          artifactType: ARTIFACT_TYPES.HAND_HISTORY,
+          title: artifact.title,
+        }))
+      }
       await params.emitter.emit(artifactVersionCreatedEvent({
         runId: params.runId,
         artifactId: artifact.id,
@@ -360,9 +497,25 @@ export class NlToHandAgent {
         version: version.version,
       }))
 
+      await this.updateActiveHandHistoryState(params.sessionId, {
+        artifactId: artifact.id,
+        versionId: version.id,
+        status: params.status === 'valid' ? (isPatch ? 'patched' : 'valid') : 'draft',
+        updatedByRunId: params.runId,
+      })
+
       return { artifactId: artifact.id, versionId: version.id }
     } catch (err) {
       await this.stepManager.failStep(artifactStep.id, err)
+      if (params.toolInvocation) {
+        await this.store.updateToolInvocation(params.toolInvocation.id, {
+          status: TOOL_INVOCATION_STATUS.FAILED,
+          phase: TOOL_INVOCATION_PHASE.ARTIFACT_WRITE,
+          errorCode: 'ARTIFACT_SAVE_FAILED',
+          errorMessage: err instanceof Error ? err.message : String(err),
+          finishedAt: now(),
+        })
+      }
       params.log.error('[NlToHandAgent] failed to save hand history artifact', {
         errorCode: 'ARTIFACT_SAVE_FAILED',
       })
@@ -380,6 +533,104 @@ export class NlToHandAgent {
     if (typeof output === 'string') return output
     if (output === undefined || output === null) return ''
     return JSON.stringify(output)
+  }
+
+  private async createPatchedHandHistoryVersion(params: {
+    artifactId: string
+    baseVersionId: string
+    runId: string
+    stepId: string
+    content: unknown
+    diffSummary: string
+  }): Promise<{ artifact: NonNullable<Awaited<ReturnType<ArtifactStore['getArtifact']>>>; version: ArtifactVersion }> {
+    const artifact = await this.artifactStore.getArtifact(params.artifactId)
+    if (!artifact) throw new Error(`Base hand_history artifact not found: ${params.artifactId}`)
+    const versions = await this.artifactStore.listVersions(params.artifactId)
+    const nextVersion = versions.reduce((max, item) => Math.max(max, item.version), 0) + 1
+    const version = await this.artifactStore.createVersion({
+      id: generateVersionId(),
+      artifactId: params.artifactId,
+      version: nextVersion,
+      content: params.content,
+      createdByRunId: params.runId,
+      createdByStepId: params.stepId,
+      createdByAgentId: this.agentId,
+      parentVersionId: params.baseVersionId,
+      diffSummary: params.diffSummary.slice(0, 500),
+    })
+    await this.artifactStore.setCurrentVersion(params.artifactId, version.id)
+    return {
+      artifact: {
+        ...artifact,
+        currentVersionId: version.id,
+        updatedAt: now(),
+      },
+      version,
+    }
+  }
+
+  private async resolveCommandContext(
+    payload: NlToHandPayload,
+    sessionId?: string,
+  ): Promise<ResolvedHandHistoryCommandContext | undefined> {
+    const command = payload.command
+    if (!command || command.type === 'create_from_nl') return undefined
+
+    if (command.type === 'replace_json') {
+      return undefined
+    }
+
+    const active = command.artifactId && command.baseVersionId
+      ? { artifactId: command.artifactId, versionId: command.baseVersionId }
+      : sessionId && this.sessionsRepository
+        ? await this.sessionsRepository.getActiveHandHistory(sessionId)
+        : undefined
+
+    if (!active) return undefined
+    const version = await this.artifactStore.getVersion(active.versionId)
+    const baseGameHand = this.extractGameHandFromVersion(version)
+    if (!version || !baseGameHand) return undefined
+
+    return {
+      type: 'patch_from_nl',
+      artifactId: active.artifactId,
+      baseVersionId: version.id,
+      baseGameHand,
+    }
+  }
+
+  private extractGameHandFromVersion(version: ArtifactVersion | null): unknown | undefined {
+    if (!version || !version.content || typeof version.content !== 'object') return undefined
+    const content = version.content as { gameHand?: unknown }
+    return content.gameHand
+  }
+
+  private async updateActiveHandHistoryState(
+    sessionId: string | undefined,
+    state: {
+      artifactId: string
+      versionId: string
+      status: 'draft' | 'valid' | 'invalid_needs_user_input' | 'patched'
+      updatedByRunId: string
+    },
+  ): Promise<void> {
+    if (!sessionId || !this.sessionsRepository) return
+    await this.sessionsRepository.updateActiveHandHistory(sessionId, state)
+  }
+
+  private buildToolIdempotencyKey(runId: string, toolName: string, inputHash: string): string {
+    return `${runId}:${toolName}:${inputHash}`
+  }
+
+  private hashUnknown(value: unknown): string {
+    return createHash('sha256').update(this.stableStringify(value)).digest('hex')
+  }
+
+  private stableStringify(value: unknown): string {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value)
+    if (Array.isArray(value)) return `[${value.map((item) => this.stableStringify(item)).join(',')}]`
+    const obj = value as Record<string, unknown>
+    return `{${Object.keys(obj).sort().map((key) => `${JSON.stringify(key)}:${this.stableStringify(obj[key])}`).join(',')}}`
   }
 
   private matchBracketValue(text: string, label: string): string | undefined {

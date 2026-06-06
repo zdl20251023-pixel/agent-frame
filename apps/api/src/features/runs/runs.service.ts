@@ -6,6 +6,12 @@ import type { ArtifactStore } from '../../artifacts/artifact-store.js'
 import type { SessionsService } from '../sessions/sessions.service.js'
 import type { ConversationContextBuilder } from '../sessions/conversation-context.builder.js'
 import { AppError } from '../../shared/errors/app-error.js'
+import {
+  capabilityRouter,
+  type CapabilityRouteResult,
+  type CapabilityRouter,
+} from '../../capabilities/capability-router.js'
+import { SUPERVISOR_AGENT_ID } from '../../ai/agents/agent-ids.js'
 
 // ============================================================
 // RunsService — Runs 功能业务逻辑层
@@ -26,6 +32,8 @@ export type CreateRunResult = {
   status: string
   sessionId: string
   createdAt: string
+  resolvedAgentId?: string
+  capabilityRoute?: CapabilityRouteResult
 }
 
 export class RunsService {
@@ -35,6 +43,7 @@ export class RunsService {
     private artifactStore: ArtifactStore,
     private sessionsService: SessionsService,
     private conversationContextBuilder: ConversationContextBuilder,
+    private router: CapabilityRouter = capabilityRouter,
   ) {}
 
   async createRun(params: CreateRunParams): Promise<CreateRunResult> {
@@ -57,10 +66,17 @@ export class RunsService {
       conversationContext = undefined
     }
 
+    const route = this.router.resolve({
+      input,
+      requestedAgentId: params.agentId,
+    })
+    const resolvedAgentId = route.type === 'agent' ? route.agentId : SUPERVISOR_AGENT_ID
+    const routedInput = this.attachCapabilityRoute(input, route)
+
     // 3. 创建 Run
     const run = await this.runManager.createRun({
-      input,
-      agentId: params.agentId,
+      input: routedInput,
+      agentId: resolvedAgentId,
       userId,
       projectId: params.projectId,
       sessionId,
@@ -80,6 +96,8 @@ export class RunsService {
       status: run.status,
       sessionId,
       createdAt: run.createdAt,
+      resolvedAgentId,
+      capabilityRoute: route,
     }
   }
 
@@ -124,5 +142,20 @@ export class RunsService {
       if (typeof msg === 'string') return msg
     }
     return ''
+  }
+
+  private attachCapabilityRoute(input: unknown, route: CapabilityRouteResult): unknown {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) return input
+    return {
+      ...input,
+      capabilityRoute: {
+        type: route.type,
+        agentId: route.type === 'agent' ? route.agentId : undefined,
+        confidence: route.confidence,
+        reason: route.reason,
+        source: route.type === 'agent' ? route.source : undefined,
+        question: route.type === 'ask_clarification' ? route.question : undefined,
+      },
+    }
   }
 }

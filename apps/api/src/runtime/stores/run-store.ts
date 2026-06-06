@@ -1,4 +1,15 @@
-import type { Run, RunStatus, Step, AgentEvent, CreateRunInput, CreateStepInput, UpdateStepInput } from '@agent-frame/shared'
+import type {
+  Run,
+  RunStatus,
+  Step,
+  AgentEvent,
+  CreateRunInput,
+  CreateStepInput,
+  UpdateStepInput,
+  ToolInvocation,
+  CreateToolInvocationInput,
+  UpdateToolInvocationInput,
+} from '@agent-frame/shared'
 
 // ============================================================
 // RunStore 接口
@@ -27,4 +38,11 @@ export interface RunStore {
   // Event 操作
   appendEvent(runId: string, event: AgentEvent): Promise<void>
   listEvents(runId: string): Promise<AgentEvent[]>
+
+  // ToolInvocation 操作
+  createToolInvocation(input: CreateToolInvocationInput): Promise<ToolInvocation>
+  getToolInvocation(invocationId: string): Promise<ToolInvocation | null>
+  getToolInvocationByIdempotencyKey(idempotencyKey: string): Promise<ToolInvocation | null>
+  updateToolInvocation(invocationId: string, update: UpdateToolInvocationInput): Promise<void>
+  listToolInvocations(runId: string): Promise<ToolInvocation[]>
 }

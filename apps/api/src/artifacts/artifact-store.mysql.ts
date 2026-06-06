@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm'
 import type { Artifact, ArtifactVersion } from '@agent-frame/shared'
 import { ARTIFACT_REVIEW_STATUS } from '@agent-frame/shared'
+import { createHash } from 'node:crypto'
 import type {
   ArtifactStore,
   CreateArtifactInput,
@@ -35,12 +36,19 @@ export class MySQLArtifactStore implements ArtifactStore {
   async createArtifactWithVersion(
     artifactInput: Omit<CreateArtifactInput, 'id'>,
     content: unknown,
-    context: { runId: string; stepId?: string; agentId?: string },
+    context: { runId: string; stepId?: string; agentId?: string; idempotencyKey?: string },
   ): Promise<{ artifact: Artifact; version: ArtifactVersion }> {
-    const artifactId = generateArtifactId()
+    const idempotencyKey = context.idempotencyKey ?? artifactInput.idempotencyKey
+    const artifactId = idempotencyKey ? stableArtifactId(idempotencyKey) : generateArtifactId()
     const versionId = generateVersionId()
     const ts = toMySQL()
     const contentStr = typeof content === 'string' ? content : JSON.stringify(content)
+
+    const existingArtifact = await this.getArtifact(artifactId)
+    if (existingArtifact?.currentVersionId) {
+      const existingVersion = await this.getVersion(existingArtifact.currentVersionId)
+      if (existingVersion) return { artifact: existingArtifact, version: existingVersion }
+    }
 
     // MySQL 事务：先写库，再 emit 事件（设计原则：事务外不推事件）
     await this.db.transaction(async (tx) => {
@@ -92,6 +100,9 @@ export class MySQLArtifactStore implements ArtifactStore {
   // ─── Artifact 操作 ─────────────────────────────────────────
 
   async createArtifact(input: CreateArtifactInput): Promise<Artifact> {
+    const existing = await this.getArtifact(input.id)
+    if (existing) return existing
+
     const ts = toMySQL()
     await this.db.insert(artifacts).values({
       id: input.id,
@@ -223,4 +234,9 @@ export class MySQLArtifactStore implements ArtifactStore {
       return content
     }
   }
+}
+
+function stableArtifactId(idempotencyKey: string): string {
+  const hash = createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 22)
+  return `art-${hash}`
 }

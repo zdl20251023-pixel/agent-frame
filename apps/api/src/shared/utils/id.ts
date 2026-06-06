@@ -30,6 +30,10 @@ export function generateStepId(): string {
   return `step-${ulid().toLowerCase()}`
 }
 
+export function generateToolInvocationId(): string {
+  return `tinv-${ulid().toLowerCase()}`
+}
+
 export function generateArtifactId(): string {
   return `art-${ulid().toLowerCase()}`
 }

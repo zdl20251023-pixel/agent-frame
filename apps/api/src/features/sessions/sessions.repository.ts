@@ -144,10 +144,87 @@ export class SessionsRepository {
     }
   }
 
+  /**
+   * 记录当前会话正在编辑的 hand_history。
+   *
+   * 参数：
+   * - sessionId：会话 ID。
+   * - state：当前活跃牌谱 Artifact 与版本信息。
+   *
+   * 返回值：无。旧库缺少 metadata 列时会降级跳过，不阻塞主链路。
+   */
+  async updateActiveHandHistory(
+    sessionId: string,
+    state: {
+      artifactId: string
+      versionId: string
+      status: 'draft' | 'valid' | 'invalid_needs_user_input' | 'patched'
+      updatedByRunId: string
+    },
+  ): Promise<void> {
+    try {
+      const existing = await this.getMetadata(sessionId)
+      await this.db
+        .update(chatSessions)
+        .set({
+          metadata: {
+            ...existing,
+            activeHandHistory: {
+              artifactId: state.artifactId,
+              versionId: state.versionId,
+              status: state.status,
+              updatedByRunId: state.updatedByRunId,
+              updatedAt: mysqlNow(),
+            },
+          },
+          updatedAt: mysqlNow(),
+        })
+        .where(eq(chatSessions.id, sessionId))
+    } catch {
+      // metadata 列不存在或 Memory 模式下不阻塞 Run 主链路
+    }
+  }
+
+  /**
+   * 读取当前会话的 active hand_history 引用。
+   */
+  async getActiveHandHistory(sessionId: string): Promise<{
+    artifactId: string
+    versionId: string
+    status?: string
+  } | undefined> {
+    try {
+      const metadata = await this.getMetadata(sessionId)
+      const raw = metadata.activeHandHistory
+      if (!raw || typeof raw !== 'object') return undefined
+      const active = raw as Record<string, unknown>
+      if (typeof active.artifactId !== 'string' || typeof active.versionId !== 'string') return undefined
+      return {
+        artifactId: active.artifactId,
+        versionId: active.versionId,
+        status: typeof active.status === 'string' ? active.status : undefined,
+      }
+    } catch {
+      return undefined
+    }
+  }
+
+  private async getMetadata(sessionId: string): Promise<Record<string, unknown>> {
+    const rows = await this.db
+      .select({ metadata: chatSessions.metadata })
+      .from(chatSessions)
+      .where(eq(chatSessions.id, sessionId))
+      .limit(1)
+    return rows.length > 0 && rows[0].metadata && typeof rows[0].metadata === 'object'
+      ? (rows[0].metadata as Record<string, unknown>)
+      : {}
+  }
+
   private mapSession(row: {
     id: string
     userId: string
     title: string | null
+    metadata?: unknown
     deletedAt: string | null
     createdAt: string
     updatedAt: string
@@ -157,6 +234,9 @@ export class SessionsRepository {
       id: row.id,
       userId: row.userId,
       title: row.title ?? undefined,
+      metadata: row.metadata && typeof row.metadata === 'object'
+        ? row.metadata as Record<string, unknown>
+        : undefined,
       deletedAt: row.deletedAt ?? undefined,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,

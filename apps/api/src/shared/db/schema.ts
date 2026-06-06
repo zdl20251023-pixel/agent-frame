@@ -113,6 +113,38 @@ export const runEvents = mysqlTable(
   ],
 )
 
+// ─── tool_invocations 表 ───────────────────────────────────────
+// 保存一次 Tool 调用的可恢复执行状态；事件只是该状态的前端投影。
+export const toolInvocations = mysqlTable(
+  'tool_invocations',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    runId: varchar('run_id', { length: 36 }).notNull(),
+    stepId: varchar('step_id', { length: 36 }).notNull(),
+    toolName: varchar('tool_name', { length: 100 }).notNull(),
+    idempotencyKey: varchar('idempotency_key', { length: 160 }).notNull(),
+    status: varchar('status', { length: 30 }).notNull().default('pending'),
+    phase: varchar('phase', { length: 40 }).notNull().default('created'),
+    inputHash: varchar('input_hash', { length: 64 }).notNull(),
+    inputPreview: json('input_preview'),
+    outputRef: varchar('output_ref', { length: 160 }),
+    errorCode: varchar('error_code', { length: 80 }),
+    errorMessage: text('error_message'),
+    startedAt: datetime('started_at', { mode: 'string', fsp: 3 }),
+    heartbeatAt: datetime('heartbeat_at', { mode: 'string', fsp: 3 }),
+    finishedAt: datetime('finished_at', { mode: 'string', fsp: 3 }),
+    retryCount: int('retry_count').notNull().default(0),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+    updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_tool_invocations_run_id').on(table.runId),
+    index('idx_tool_invocations_step_id').on(table.stepId),
+    index('idx_tool_invocations_status').on(table.status),
+    uniqueIndex('uq_tool_invocations_idempotency').on(table.idempotencyKey),
+  ],
+)
+
 // ─── artifacts 表 ─────────────────────────────────────────────
 export const artifacts = mysqlTable(
   'artifacts',

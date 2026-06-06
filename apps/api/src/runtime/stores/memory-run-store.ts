@@ -1,5 +1,16 @@
-import type { Run, RunStatus, Step, AgentEvent, CreateRunInput, CreateStepInput, UpdateStepInput } from '@agent-frame/shared'
-import { RUN_STATUS, STEP_STATUS } from '@agent-frame/shared'
+import type {
+  Run,
+  RunStatus,
+  Step,
+  AgentEvent,
+  CreateRunInput,
+  CreateStepInput,
+  UpdateStepInput,
+  ToolInvocation,
+  CreateToolInvocationInput,
+  UpdateToolInvocationInput,
+} from '@agent-frame/shared'
+import { RUN_STATUS, STEP_STATUS, TOOL_INVOCATION_PHASE, TOOL_INVOCATION_STATUS } from '@agent-frame/shared'
 import type { RunStore } from './run-store.js'
 import { now } from '../../shared/utils/id.js'
 
@@ -13,6 +24,9 @@ export class MemoryRunStore implements RunStore {
   private steps = new Map<string, Step>()
   private stepsByRun = new Map<string, string[]>()     // runId -> stepIds
   private events = new Map<string, AgentEvent[]>()     // runId -> events
+  private toolInvocations = new Map<string, ToolInvocation>()
+  private toolInvocationByIdempotency = new Map<string, string>()
+  private toolInvocationsByRun = new Map<string, string[]>()
 
   async createRun(input: CreateRunInput & { id: string }): Promise<Run> {
     const run: Run = {
@@ -118,5 +132,61 @@ export class MemoryRunStore implements RunStore {
 
   async listEvents(runId: string): Promise<AgentEvent[]> {
     return this.events.get(runId) ?? []
+  }
+
+  async createToolInvocation(input: CreateToolInvocationInput): Promise<ToolInvocation> {
+    const existingId = this.toolInvocationByIdempotency.get(input.idempotencyKey)
+    if (existingId) {
+      const existing = this.toolInvocations.get(existingId)
+      if (existing) return existing
+    }
+
+    const ts = now()
+    const invocation: ToolInvocation = {
+      id: input.id,
+      runId: input.runId,
+      stepId: input.stepId,
+      toolName: input.toolName,
+      idempotencyKey: input.idempotencyKey,
+      status: TOOL_INVOCATION_STATUS.PENDING,
+      phase: TOOL_INVOCATION_PHASE.CREATED,
+      inputHash: input.inputHash,
+      inputPreview: input.inputPreview,
+      retryCount: 0,
+      createdAt: ts,
+      updatedAt: ts,
+    }
+    this.toolInvocations.set(invocation.id, invocation)
+    this.toolInvocationByIdempotency.set(invocation.idempotencyKey, invocation.id)
+    const list = this.toolInvocationsByRun.get(invocation.runId) ?? []
+    list.push(invocation.id)
+    this.toolInvocationsByRun.set(invocation.runId, list)
+    return invocation
+  }
+
+  async getToolInvocation(invocationId: string): Promise<ToolInvocation | null> {
+    return this.toolInvocations.get(invocationId) ?? null
+  }
+
+  async getToolInvocationByIdempotencyKey(idempotencyKey: string): Promise<ToolInvocation | null> {
+    const id = this.toolInvocationByIdempotency.get(idempotencyKey)
+    return id ? this.toolInvocations.get(id) ?? null : null
+  }
+
+  async updateToolInvocation(invocationId: string, update: UpdateToolInvocationInput): Promise<void> {
+    const invocation = this.toolInvocations.get(invocationId)
+    if (!invocation) throw new Error(`ToolInvocation not found: ${invocationId}`)
+    const ts = now()
+    this.toolInvocations.set(invocationId, {
+      ...invocation,
+      ...update,
+      startedAt: invocation.startedAt ?? (update.status === TOOL_INVOCATION_STATUS.RUNNING ? ts : undefined),
+      updatedAt: ts,
+    })
+  }
+
+  async listToolInvocations(runId: string): Promise<ToolInvocation[]> {
+    const ids = this.toolInvocationsByRun.get(runId) ?? []
+    return ids.map((id) => this.toolInvocations.get(id)!).filter(Boolean)
   }
 }

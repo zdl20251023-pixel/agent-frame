@@ -48,6 +48,7 @@ export type AgentEvent =
       type: typeof EVENT_TYPES.TOOL_CALL
       runId: string
       stepId?: string
+      toolInvocationId?: string
       agentId: string
       toolName: string
       input: unknown
@@ -57,6 +58,7 @@ export type AgentEvent =
       type: typeof EVENT_TYPES.TOOL_RESULT
       runId: string
       stepId?: string
+      toolInvocationId?: string
       agentId: string
       toolName: string
       output: unknown

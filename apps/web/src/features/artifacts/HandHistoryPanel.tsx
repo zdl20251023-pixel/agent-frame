@@ -45,6 +45,16 @@ export function HandHistoryPanel({ content }: { content: ArtifactContent }) {
   const hero = players.find((player) => player.hole_card_list)
   const status = validation?.ok ? 'valid' : 'draft'
 
+  function handleContinueEdit() {
+    window.dispatchEvent(new CustomEvent('hand-history:continue-edit', {
+      detail: {
+        artifactId: content.artifactId,
+        baseVersionId: content.versionId,
+        title: content.title,
+      },
+    }))
+  }
+
   return (
     <div style={panelStyle}>
       <div style={headerStyle}>
@@ -56,6 +66,10 @@ export function HandHistoryPanel({ content }: { content: ArtifactContent }) {
           {status === 'valid' ? '校验通过' : '待补充 / 待修正'}
         </span>
       </div>
+
+      <button type="button" style={continueButtonStyle} onClick={handleContinueEdit}>
+        基于此牌谱继续修改
+      </button>
 
       <div style={gridStyle}>
         <InfoItem label="人数" value={players.length ? `${players.length} 人` : '未知'} />
@@ -197,6 +211,17 @@ const draftBadgeStyle: React.CSSProperties = {
   background: 'rgba(245,158,11,0.12)',
   border: '1px solid rgba(245,158,11,0.28)',
   fontSize: '12px',
+}
+
+const continueButtonStyle: React.CSSProperties = {
+  alignSelf: 'flex-start',
+  padding: '8px 12px',
+  borderRadius: '999px',
+  border: '1px solid rgba(249,115,22,0.35)',
+  background: 'rgba(249,115,22,0.12)',
+  color: '#fed7aa',
+  fontSize: '12px',
+  cursor: 'pointer',
 }
 
 const gridStyle: React.CSSProperties = {

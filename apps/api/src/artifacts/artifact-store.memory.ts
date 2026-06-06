@@ -1,5 +1,6 @@
 import type { Artifact, ArtifactVersion } from '@agent-frame/shared'
 import { ARTIFACT_REVIEW_STATUS } from '@agent-frame/shared'
+import { createHash } from 'node:crypto'
 import type {
   ArtifactStore,
   CreateArtifactInput,
@@ -18,6 +19,9 @@ export class MemoryArtifactStore implements ArtifactStore {
   private artifactsByRun = new Map<string, string[]>()
 
   async createArtifact(input: CreateArtifactInput): Promise<Artifact> {
+    const existing = this.artifacts.get(input.id)
+    if (existing) return existing
+
     const ts = now()
     const artifact: Artifact = {
       id: input.id,
@@ -62,10 +66,17 @@ export class MemoryArtifactStore implements ArtifactStore {
   async createArtifactWithVersion(
     artifactInput: Omit<CreateArtifactInput, 'id'>,
     content: unknown,
-    context: { runId: string; stepId?: string; agentId?: string },
+    context: { runId: string; stepId?: string; agentId?: string; idempotencyKey?: string },
   ): Promise<{ artifact: Artifact; version: ArtifactVersion }> {
-    const artifactId = generateArtifactId()
+    const idempotencyKey = context.idempotencyKey ?? artifactInput.idempotencyKey
+    const artifactId = idempotencyKey ? stableArtifactId(idempotencyKey) : generateArtifactId()
     const versionId = generateVersionId()
+
+    const existingArtifact = await this.getArtifact(artifactId)
+    if (existingArtifact?.currentVersionId) {
+      const existingVersion = await this.getVersion(existingArtifact.currentVersionId)
+      if (existingVersion) return { artifact: existingArtifact, version: existingVersion }
+    }
 
     const artifact = await this.createArtifact({ ...artifactInput, id: artifactId })
     const version = await this.createVersion({
@@ -108,4 +119,9 @@ export class MemoryArtifactStore implements ArtifactStore {
     const ids = this.artifactsByRun.get(runId) ?? []
     return ids.map((id) => this.artifacts.get(id)!).filter(Boolean)
   }
+}
+
+function stableArtifactId(idempotencyKey: string): string {
+  const hash = createHash('sha256').update(idempotencyKey).digest('hex').slice(0, 22)
+  return `art-${hash}`
 }

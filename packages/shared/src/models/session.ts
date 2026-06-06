@@ -9,6 +9,7 @@ export type ChatSession = {
   id: string
   userId: string
   title?: string
+  metadata?: Record<string, unknown>
   deletedAt?: string
   createdAt: string
   updatedAt: string
