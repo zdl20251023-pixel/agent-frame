@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { AgentSummary, AgentDetail, PluginInfo, PluginAgentDef, PluginWorkflow } from './agents.api.ts'
+import type { AgentSummary, PluginInfo, PluginAgentDef, PluginWorkflow } from './agents.api.ts'
 import { listAgents, listPlugins, listPluginAgents, listPluginWorkflows } from './agents.api.ts'
 
 // ──────────────────────────────────────────────────────────

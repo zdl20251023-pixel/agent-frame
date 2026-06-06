@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import type { Artifact } from '@agent-frame/shared'
 import { get } from '../../lib/http.ts'
 
@@ -31,12 +31,22 @@ export function useArtifact(artifactId: string): UseArtifactResult {
   const [content, setContent] = useState<ArtifactContent | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [tick, setTick] = useState(0)
+  const [reloadSeq, setReloadSeq] = useState(0)
+  const loadedForRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (!artifactId) return
     let cancelled = false
-    setLoading(true)
+    // reload 时保留已渲染内容，避免 HandHistoryPanel 卸载后 ref 重置引发重复请求
+    const silentRefresh = loadedForRef.current === artifactId && reloadSeq > 0
+    if (!silentRefresh) {
+      setLoading(true)
+      if (loadedForRef.current !== artifactId) {
+        setArtifact(null)
+        setContent(null)
+        loadedForRef.current = null
+      }
+    }
     setError(null)
 
     Promise.all([
@@ -47,6 +57,7 @@ export function useArtifact(artifactId: string): UseArtifactResult {
         if (cancelled) return
         setArtifact(a)
         setContent(c)
+        loadedForRef.current = artifactId
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err.message)
@@ -56,7 +67,9 @@ export function useArtifact(artifactId: string): UseArtifactResult {
       })
 
     return () => { cancelled = true }
-  }, [artifactId, tick])
+  }, [artifactId, reloadSeq])
 
-  return { artifact, content, loading, error, reload: () => setTick((t) => t + 1) }
+  const reload = useCallback(() => setReloadSeq((n) => n + 1), [])
+
+  return { artifact, content, loading, error, reload }
 }

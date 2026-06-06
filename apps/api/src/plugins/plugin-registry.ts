@@ -1,6 +1,7 @@
 import type { AgentPlugin, PluginAgentDefinition, ToolDefinition, WorkflowDefinition, ArtifactTypeDefinition } from './plugin.types.js'
 import { logger } from '../shared/observability/logger.js'
 import { PluginContextFactory, type PluginRegistrations } from './plugin-context.js'
+import type { ToolFactory } from '../ai/tools/tool-factory.js'
 
 // ============================================================
 // plugins/plugin-registry.ts — 插件注册和查询（升级版）
@@ -66,6 +67,14 @@ export class PluginRegistry {
 
   listTools(): ToolDefinition[] {
     return Array.from(this.store.tools.values())
+  }
+
+  getToolRuntime(id: string): ToolFactory | undefined {
+    return this.store.tools.get(id)?.runtimeFactory
+  }
+
+  listExecutableTools(): ToolDefinition[] {
+    return this.listTools().filter((tool) => Boolean(tool.runtimeFactory))
   }
 
   // ─── Workflow 查询 ─────────────────────────────────────────

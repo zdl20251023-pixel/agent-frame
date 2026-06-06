@@ -7,6 +7,7 @@ import type {
   ArtifactTypeDefinition,
 } from './plugin.types.js'
 import { logger } from '../shared/observability/logger.js'
+import { toolRegistry } from '../ai/tools/tool-factory.js'
 
 // ============================================================
 // plugins/plugin-context.ts — 完整 PluginContext 实现
@@ -85,6 +86,10 @@ export class PluginContextFactory {
           return
         }
         store.tools.set(tool.id, tool)
+        if (tool.runtimeFactory) {
+          toolRegistry.register(tool.id, tool.runtimeFactory)
+          logger.info('[PluginContext] Tool runtime registered', { toolId: tool.id, pluginId })
+        }
         logger.info('[PluginContext] Tool registered', { toolId: tool.id, pluginId })
       },
 

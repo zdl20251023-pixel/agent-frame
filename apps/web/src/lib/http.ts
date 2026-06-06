@@ -3,13 +3,14 @@ import { clearToken, getToken } from './auth-token.ts'
 const BASE_URL = '/api'
 
 export class HttpError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public body?: unknown,
-  ) {
+  status: number
+  body?: unknown
+
+  constructor(message: string, status: number, body?: unknown) {
     super(message)
     this.name = 'HttpError'
+    this.status = status
+    this.body = body
   }
 }
 

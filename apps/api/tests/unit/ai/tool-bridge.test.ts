@@ -67,4 +67,12 @@ describe('Tool Bridge', () => {
     expect(tool?.parameters).toBeTruthy()
     expect((tool?.parameters as { type?: string }).type).toBe('object')
   })
+
+  it('should expose nl_to_hand runtime through PluginRegistry and ToolRegistry', () => {
+    registerBuiltinPlugins()
+
+    expect(pluginRegistry.getToolRuntime('nl_to_hand')).toBeTruthy()
+    expect(pluginRegistry.listExecutableTools().some((item) => item.id === 'nl_to_hand')).toBe(true)
+    expect(toolRegistry.listNames()).toContain('nl_to_hand')
+  })
 })

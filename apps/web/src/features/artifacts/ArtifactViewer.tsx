@@ -87,7 +87,7 @@ export function ArtifactViewer({ artifactId, showVersionHistory = false }: Artif
       {/* 产物内容 */}
       {expanded && (
         <div className="artifact-viewer-body">
-          <ArtifactContentRenderer content={content} />
+          <ArtifactContentRenderer content={content} onRefresh={reload} />
         </div>
       )}
 
@@ -114,12 +114,12 @@ export function ArtifactViewer({ artifactId, showVersionHistory = false }: Artif
 
 // ─── 内容渲染器（按 type 选择展示方式）────────────────────────
 
-function ArtifactContentRenderer({ content }: { content: ArtifactContent }) {
+function ArtifactContentRenderer({ content, onRefresh }: { content: ArtifactContent; onRefresh?: () => void }) {
   const raw = content.content
 
   // hand_history：自然语言转牌谱专用展示
   if (content.type === 'hand_history') {
-    return <HandHistoryPanel content={content} />
+    return <HandHistoryPanel content={content} onRefresh={onRefresh} />
   }
 
   // summary / report：纯文本段落

@@ -80,6 +80,7 @@ export function getNlToHandPluginToolDefinition() {
     name: nlToHandAgentTool.name,
     description: nlToHandAgentTool.description,
     parameters: nlToHandAgentTool.parameters ?? nlToHandAgentTool.schema,
+    runtimeFactory: nlToHandToolFactory,
   }
 }
 

@@ -1,3 +1,5 @@
+import type { ToolFactory } from '../ai/tools/tool-factory.js'
+
 // ============================================================
 // plugins/ — 插件注册层类型定义
 // 目标：让未来业务能力通过注册方式接入，不修改核心 runtime
@@ -26,6 +28,8 @@ export type ToolDefinition = {
   name: string
   description: string
   parameters: unknown    // JSON Schema
+  /** 可选运行时工厂：提供后，插件注册时会同步注册到 ToolRegistry。 */
+  runtimeFactory?: ToolFactory
 }
 
 /** Workflow 模板定义（预留，当前 MVP 不强制实现）*/

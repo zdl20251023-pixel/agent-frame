@@ -1,5 +1,8 @@
+import { useCallback, useEffect, useRef } from 'react'
 import type React from 'react'
+import type { ToolInvocation } from '@agent-frame/shared'
 import type { ArtifactContent } from './useArtifact.ts'
+import { useToolInvocation } from './useToolInvocation.ts'
 
 // ============================================================
 // HandHistoryPanel — hand_history 专用展示面板
@@ -35,15 +38,57 @@ type HandHistoryContent = {
   }
   renderedMarkdown?: string
   toolResultText?: string
+  handHistoryState?: {
+    status?: 'draft' | 'valid' | 'invalid_needs_user_input' | 'patched' | 'repairing' | 'repair_failed'
+    asyncRepair?: boolean
+    baseArtifactId?: string
+    baseVersionId?: string
+    commandType?: string
+  }
+  createdBy?: {
+    runId?: string
+    agentId?: string
+    toolName?: string
+    toolInvocationId?: string
+  }
+  repairedBy?: {
+    taskType?: string
+    repairedAt?: string
+  }
 }
 
-export function HandHistoryPanel({ content }: { content: ArtifactContent }) {
+export function HandHistoryPanel({ content, onRefresh }: { content: ArtifactContent; onRefresh?: () => void }) {
   const data = normalizeHandHistoryContent(content.content)
   const gameHand = data.gameHand
   const validation = data.validation
   const players = gameHand?.players ?? []
   const hero = players.find((player) => player.hole_card_list)
-  const status = validation?.ok ? 'valid' : 'draft'
+  const toolInvocationId = data.createdBy?.toolInvocationId
+  const refreshedInvocationRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    refreshedInvocationRef.current = null
+  }, [toolInvocationId])
+
+  const handleToolPoll = useCallback((invocation: ToolInvocation) => {
+    // 内容已有效，或该 invocation 已触发过刷新，无需再拉 artifact
+    if (data.validation?.ok) return
+    if (
+      invocation.status === 'succeeded' &&
+      invocation.phase === 'completed' &&
+      refreshedInvocationRef.current !== invocation.id
+    ) {
+      refreshedInvocationRef.current = invocation.id
+      onRefresh?.()
+    }
+  }, [onRefresh, data.validation?.ok])
+  const { toolInvocation, error: toolStatusError } = useToolInvocation(toolInvocationId, {
+    poll: shouldPollToolInvocation(data, toolInvocationId),
+    intervalMs: 3000,
+    onPoll: handleToolPoll,
+  })
+  const status = resolveHandHistoryStatus(data, toolInvocation)
+  const statusMeta = getStatusMeta(status)
 
   function handleContinueEdit() {
     window.dispatchEvent(new CustomEvent('hand-history:continue-edit', {
@@ -62,9 +107,22 @@ export function HandHistoryPanel({ content }: { content: ArtifactContent }) {
           <div style={labelStyle}>Hand History</div>
           <h3 style={titleStyle}>{content.title ?? '牌谱产物'}</h3>
         </div>
-        <span style={status === 'valid' ? validBadgeStyle : draftBadgeStyle}>
-          {status === 'valid' ? '校验通过' : '待补充 / 待修正'}
+        <span style={statusMeta.badgeStyle}>
+          {statusMeta.label}
         </span>
+      </div>
+
+      <div style={statusPanelStyle}>
+        <div style={statusTitleStyle}>{statusMeta.title}</div>
+        <div style={statusDescriptionStyle}>{statusMeta.description}</div>
+        {toolInvocation && (
+          <div style={statusDetailStyle}>
+            ToolInvocation: <code>{toolInvocation.id.slice(0, 18)}...</code>
+            {' · '}
+            {toolInvocation.status}/{toolInvocation.phase}
+          </div>
+        )}
+        {toolStatusError && <div style={statusErrorStyle}>工具状态加载失败：{toolStatusError}</div>}
       </div>
 
       <button type="button" style={continueButtonStyle} onClick={handleContinueEdit}>
@@ -125,6 +183,76 @@ export function HandHistoryPanel({ content }: { content: ArtifactContent }) {
       </details>
     </div>
   )
+}
+
+type HandHistoryStatus = 'valid' | 'draft' | 'repairing' | 'repair_failed' | 'invalid_needs_user_input'
+
+function resolveHandHistoryStatus(data: HandHistoryContent, invocation: ToolInvocation | null): HandHistoryStatus {
+  if (invocation?.status === 'waiting_repair') return 'repairing'
+  if (invocation?.status === 'running' && invocation.phase === 'inner_repair') return 'repairing'
+  if (invocation?.status === 'failed' && invocation.phase === 'inner_repair') return 'repair_failed'
+  if (data.handHistoryState?.status === 'repairing') return 'repairing'
+  if (data.handHistoryState?.status === 'repair_failed') return 'repair_failed'
+  if (data.handHistoryState?.status === 'invalid_needs_user_input') return 'invalid_needs_user_input'
+  if (data.validation?.ok || data.handHistoryState?.status === 'valid' || data.handHistoryState?.status === 'patched') {
+    return 'valid'
+  }
+  return 'draft'
+}
+
+function shouldPollToolInvocation(data: HandHistoryContent, invocationId: string | undefined): boolean {
+  if (!invocationId) return false
+  if (data.validation?.ok) return false
+  if (data.handHistoryState?.status === 'invalid_needs_user_input') return false
+  if (data.handHistoryState?.status === 'repair_failed') return false
+  // 仅在后端已标记修复中时才主动轮询；纯 draft 只拉一次 invocation（由 hook 内判断终态）
+  return data.handHistoryState?.status === 'repairing' || data.handHistoryState?.asyncRepair === true
+}
+
+function getStatusMeta(status: HandHistoryStatus): {
+  label: string
+  title: string
+  description: string
+  badgeStyle: React.CSSProperties
+} {
+  if (status === 'valid') {
+    return {
+      label: '校验通过',
+      title: '当前牌谱已通过校验',
+      description: '这版牌谱已经通过确定性引擎校验，可以继续基于它做增量修改。',
+      badgeStyle: validBadgeStyle,
+    }
+  }
+  if (status === 'repairing') {
+    return {
+      label: '后台修复中',
+      title: '已保存 draft，后台正在尝试修复',
+      description: '同步 Run 已先返回，内层 LLM 修复正在后台执行；修复成功后会追加新的有效版本。',
+      badgeStyle: repairingBadgeStyle,
+    }
+  }
+  if (status === 'repair_failed') {
+    return {
+      label: '后台修复失败',
+      title: '后台修复未生成合法牌谱',
+      description: '当前 draft 仍然保留，可以根据错误信息补充缺失信息后继续修改。',
+      badgeStyle: failedBadgeStyle,
+    }
+  }
+  if (status === 'invalid_needs_user_input') {
+    return {
+      label: '需要补充信息',
+      title: '需要用户补充后才能继续',
+      description: '当前描述不足以稳定生成合法牌谱，请补充错误提示中指出的信息。',
+      badgeStyle: draftBadgeStyle,
+    }
+  }
+  return {
+    label: '待补充 / 待修正',
+    title: '当前为 draft 牌谱',
+    description: '这版牌谱尚未通过完整校验，可以继续修改或等待后台修复结果。',
+    badgeStyle: draftBadgeStyle,
+  }
 }
 
 function normalizeHandHistoryContent(content: unknown): HandHistoryContent {
@@ -211,6 +339,56 @@ const draftBadgeStyle: React.CSSProperties = {
   background: 'rgba(245,158,11,0.12)',
   border: '1px solid rgba(245,158,11,0.28)',
   fontSize: '12px',
+}
+
+const repairingBadgeStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  borderRadius: '999px',
+  color: '#93c5fd',
+  background: 'rgba(59,130,246,0.12)',
+  border: '1px solid rgba(59,130,246,0.28)',
+  fontSize: '12px',
+}
+
+const failedBadgeStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  borderRadius: '999px',
+  color: '#fca5a5',
+  background: 'rgba(239,68,68,0.12)',
+  border: '1px solid rgba(239,68,68,0.28)',
+  fontSize: '12px',
+}
+
+const statusPanelStyle: React.CSSProperties = {
+  padding: '12px',
+  borderRadius: '12px',
+  background: 'rgba(255,255,255,0.035)',
+  border: '1px solid rgba(255,255,255,0.08)',
+}
+
+const statusTitleStyle: React.CSSProperties = {
+  color: '#e5e7eb',
+  fontSize: '13px',
+  fontWeight: 700,
+  marginBottom: '4px',
+}
+
+const statusDescriptionStyle: React.CSSProperties = {
+  color: '#cbd5e1',
+  fontSize: '12px',
+  lineHeight: 1.6,
+}
+
+const statusDetailStyle: React.CSSProperties = {
+  marginTop: '8px',
+  color: '#94a3b8',
+  fontSize: '11px',
+}
+
+const statusErrorStyle: React.CSSProperties = {
+  marginTop: '8px',
+  color: '#fca5a5',
+  fontSize: '11px',
 }
 
 const continueButtonStyle: React.CSSProperties = {
