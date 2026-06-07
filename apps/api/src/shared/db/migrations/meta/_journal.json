@@ -29,6 +29,13 @@
       "when": 1780762500000,
       "tag": "0003_tool_invocation_recovery_payload",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "5",
+      "when": 1780798560906,
+      "tag": "0004_lame_grey_gargoyle",
+      "breakpoints": true
     }
   ]
 }

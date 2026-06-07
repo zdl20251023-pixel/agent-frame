@@ -3,6 +3,8 @@ import type {
   RunStatus,
   Step,
   AgentEvent,
+  StoredAgentEvent,
+  RunCheckpointPayload,
   CreateRunInput,
   CreateStepInput,
   UpdateStepInput,
@@ -21,14 +23,21 @@ import { now } from '../../shared/utils/id.js'
 
 export class MemoryRunStore implements RunStore {
   private runs = new Map<string, Run>()
+  private runsByIdempotency = new Map<string, string>()
   private steps = new Map<string, Step>()
-  private stepsByRun = new Map<string, string[]>()     // runId -> stepIds
-  private events = new Map<string, AgentEvent[]>()     // runId -> events
+  private stepsByRun = new Map<string, string[]>()
+  private storedEvents = new Map<string, StoredAgentEvent[]>()
+  private eventIdCounter = 1
   private toolInvocations = new Map<string, ToolInvocation>()
   private toolInvocationByIdempotency = new Map<string, string>()
   private toolInvocationsByRun = new Map<string, string[]>()
 
   async createRun(input: CreateRunInput & { id: string }): Promise<Run> {
+    if (input.idempotencyKey) {
+      const existing = await this.getRunByIdempotencyKey(input.idempotencyKey, input.userId)
+      if (existing) return existing
+    }
+
     const run: Run = {
       id: input.id,
       traceId: input.traceId,
@@ -38,16 +47,57 @@ export class MemoryRunStore implements RunStore {
       sessionId: input.sessionId,
       status: RUN_STATUS.QUEUED,
       input: input.input,
+      idempotencyKey: input.idempotencyKey,
       createdAt: now(),
       updatedAt: now(),
     }
     this.runs.set(run.id, run)
-    this.events.set(run.id, [])
+    if (input.idempotencyKey) {
+      this.runsByIdempotency.set(`${input.userId ?? ''}:${input.idempotencyKey}`, run.id)
+    }
+    this.storedEvents.set(run.id, [])
     return run
   }
 
   async getRun(runId: string): Promise<Run | null> {
     return this.runs.get(runId) ?? null
+  }
+
+  async getRunByIdempotencyKey(idempotencyKey: string, userId?: string): Promise<Run | null> {
+    const runId = this.runsByIdempotency.get(`${userId ?? ''}:${idempotencyKey}`)
+    return runId ? this.runs.get(runId) ?? null : null
+  }
+
+  async updateRunCheckpoint(runId: string, checkpoint: RunCheckpointPayload): Promise<void> {
+    const run = this.runs.get(runId)
+    if (!run) throw new Error(`Run not found: ${runId}`)
+    this.runs.set(runId, { ...run, checkpointPayload: checkpoint, updatedAt: now() })
+  }
+
+  async listStaleRuns(options: {
+    staleBefore: string
+    statuses: RunStatus[]
+    limit?: number
+  }): Promise<Run[]> {
+    const staleMs = Date.parse(options.staleBefore)
+    return [...this.runs.values()]
+      .filter((run) => {
+        if (!options.statuses.includes(run.status)) return false
+        return Date.parse(run.updatedAt) <= staleMs
+      })
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, options.limit ?? 50)
+  }
+
+  async listActiveRunsBySession(sessionId: string, userId: string): Promise<Run[]> {
+    return [...this.runs.values()]
+      .filter(
+        (run) =>
+          run.sessionId === sessionId &&
+          run.userId === userId &&
+          (run.status === RUN_STATUS.QUEUED || run.status === RUN_STATUS.RUNNING),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
   }
 
   async updateRunStatus(
@@ -124,14 +174,24 @@ export class MemoryRunStore implements RunStore {
     return ids.map((id) => this.steps.get(id)!).filter(Boolean)
   }
 
-  async appendEvent(runId: string, event: AgentEvent): Promise<void> {
-    const list = this.events.get(runId) ?? []
-    list.push(event)
-    this.events.set(runId, list)
+  async appendEvent(runId: string, event: AgentEvent): Promise<number | undefined> {
+    const list = this.storedEvents.get(runId) ?? []
+    const id = this.eventIdCounter++
+    list.push({ id, event, createdAt: now() })
+    this.storedEvents.set(runId, list)
+    return id
   }
 
   async listEvents(runId: string): Promise<AgentEvent[]> {
-    return this.events.get(runId) ?? []
+    return (this.storedEvents.get(runId) ?? []).map((item) => item.event)
+  }
+
+  async listStoredEvents(runId: string): Promise<StoredAgentEvent[]> {
+    return this.storedEvents.get(runId) ?? []
+  }
+
+  async listEventsAfter(runId: string, afterEventId: number): Promise<StoredAgentEvent[]> {
+    return (this.storedEvents.get(runId) ?? []).filter((item) => item.id > afterEventId)
   }
 
   async createToolInvocation(input: CreateToolInvocationInput): Promise<ToolInvocation> {
@@ -201,5 +261,12 @@ export class MemoryRunStore implements RunStore {
       })
       .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
       .slice(0, limit)
+  }
+
+  async listWaitingRepairToolInvocations(options: { limit?: number }): Promise<ToolInvocation[]> {
+    return [...this.toolInvocations.values()]
+      .filter((invocation) => invocation.status === TOOL_INVOCATION_STATUS.WAITING_REPAIR)
+      .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt))
+      .slice(0, options.limit ?? 50)
   }
 }

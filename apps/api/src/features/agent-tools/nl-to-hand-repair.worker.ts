@@ -1,4 +1,5 @@
 import {
+  EVENT_TYPES,
   TOOL_INVOCATION_PHASE,
   TOOL_INVOCATION_STATUS,
   type ArtifactVersion,
@@ -18,6 +19,7 @@ import {
   NL_TO_HAND_INNER_REPAIR_TASK_TYPE,
 } from './nl-to-hand-async.constants.js'
 import { NL_TO_HAND_AGENT_ID } from '../../ai/agents/agent-ids.js'
+import { emitSessionEvent } from '../sessions/session-event-emitter.js'
 
 // ============================================================
 // NlToHandRepairWorker — 自然语言转牌谱内层修复异步 Worker
@@ -101,6 +103,18 @@ export class NlToHandRepairWorker {
     }
 
     try {
+      if (input.sessionId) {
+        await emitSessionEvent(input.sessionId, {
+          type: EVENT_TYPES.AGENT_TASK_STARTED,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          taskId: task.id,
+          toAgentId: task.toAgentId,
+          retryCount: task.retryCount,
+          timestamp: now(),
+        })
+      }
+
       await this.runStore.updateToolInvocation(input.toolInvocationId, {
         status: TOOL_INVOCATION_STATUS.RUNNING,
         phase: TOOL_INVOCATION_PHASE.INNER_REPAIR,
@@ -129,6 +143,18 @@ export class NlToHandRepairWorker {
           code: 'INNER_REPAIR_FAILED',
           message: outputText.slice(0, 1000),
         })
+        if (input.sessionId) {
+          await emitSessionEvent(input.sessionId, {
+            type: EVENT_TYPES.AGENT_TASK_FAILED,
+            runId: input.runId,
+            sessionId: input.sessionId,
+            taskId: task.id,
+            toAgentId: task.toAgentId,
+            error: { code: 'INNER_REPAIR_FAILED', message: outputText.slice(0, 1000) },
+            retryCount: task.retryCount,
+            timestamp: now(),
+          })
+        }
         return
       }
 
@@ -158,6 +184,26 @@ export class NlToHandRepairWorker {
           status: 'valid',
           updatedByRunId: input.runId,
         })
+        await emitSessionEvent(input.sessionId, {
+          type: EVENT_TYPES.AGENT_TASK_COMPLETED,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          taskId: task.id,
+          toAgentId: task.toAgentId,
+          outputPreview: `已生成 v${version.version}`,
+          timestamp: now(),
+        })
+        await emitSessionEvent(input.sessionId, {
+          type: EVENT_TYPES.ARTIFACT_REPAIR_COMPLETED,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          artifactId: input.draftArtifactId,
+          versionId: version.id,
+          version: version.version,
+          success: true,
+          diffSummary: '后台内层修复生成合法牌谱',
+          timestamp: now(),
+        })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -172,6 +218,18 @@ export class NlToHandRepairWorker {
         code: 'INNER_REPAIR_EXCEPTION',
         message,
       }, true)
+      if (input?.sessionId) {
+        await emitSessionEvent(input.sessionId, {
+          type: EVENT_TYPES.AGENT_TASK_FAILED,
+          runId: input.runId,
+          sessionId: input.sessionId,
+          taskId: task.id,
+          toAgentId: task.toAgentId,
+          error: { code: 'INNER_REPAIR_EXCEPTION', message },
+          retryCount: task.retryCount + 1,
+          timestamp: now(),
+        })
+      }
     }
   }
 

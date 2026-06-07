@@ -7,9 +7,6 @@ import { A2AClient } from './a2a/a2a-client.js'
 import { createLocalAgentAdapter } from './a2a/local-agent-adapter.js'
 import { VercelAIModelClient } from './ai/model-client/vercel-ai-model-client.js'
 import { SupervisorAgent } from './ai/agents/supervisor.agent.js'
-import { ResearchAgent } from './ai/agents/research.agent.js'
-import { SummaryAgent } from './ai/agents/summary.agent.js'
-import { NlToHandAgent } from './ai/agents/nl-to-hand.agent.js'
 import { AgentExecutorRouter } from './ai/agents/agent-executor-router.js'
 import {
   SUPERVISOR_AGENT_ID,
@@ -18,9 +15,6 @@ import {
   NL_TO_HAND_AGENT_ID,
 } from './ai/agents/agent-ids.js'
 import {
-  OutlineAgent,
-  WritingAgent,
-  ReviewAgent,
   OUTLINE_AGENT_ID,
   WRITING_AGENT_ID,
   REVIEW_AGENT_ID,
@@ -49,13 +43,15 @@ import { AgentTaskWorker } from './queues/agent-task.worker.js'
 import { SessionsRepository } from './features/sessions/sessions.repository.js'
 import { SessionSummaryService } from './features/sessions/session-summary.service.js'
 import { ToolInvocationRecoveryWorker } from './runtime/tool-invocation-recovery.worker.js'
+import { RunRecoveryWorker } from './runtime/run-recovery.worker.js'
 import { NlToHandRepairWorker } from './features/agent-tools/nl-to-hand-repair.worker.js'
+import { pluginRegistry } from './plugins/plugin-registry.js'
+import { registerBuiltinPlugins } from './plugins/builtin-plugins.js'
+import { CapabilityRouter } from './capabilities/capability-router.js'
+import type { AgentAssemblyDeps } from './plugins/plugin-runtime.types.js'
+import type { AgentExecutor } from './runtime/run-manager.js'
+import './runtime/tool-replay.registry.js'
 
-// ============================================================
-// 应用依赖容器 — 初始化并组装所有核心组件
-// ============================================================
-
-// Workflow 专用 Agent ID（不注册到 A2APolicy 的"发起方"白名单中会被拦截，此处允许）
 const WORKFLOW_RUNNER_AGENT_ID = 'workflow-runner'
 
 export type AppContainer = {
@@ -77,7 +73,10 @@ export type AppContainer = {
   memoryRetriever: MemoryRetriever
   agentTaskWorker: AgentTaskWorker
   toolInvocationRecoveryWorker: ToolInvocationRecoveryWorker
+  runRecoveryWorker: RunRecoveryWorker
   nlToHandRepairWorker: NlToHandRepairWorker
+  capabilityRouter: CapabilityRouter
+  pluginRegistry: typeof pluginRegistry
 }
 
 function createStore(): RunStore {
@@ -85,161 +84,134 @@ function createStore(): RunStore {
     logger.info('[Container] Using MySQLRunStore')
     return new MySQLRunStore()
   }
-  logger.warn('[Container] DATABASE_URL not set, falling back to MemoryRunStore')
+  if (env.isProd && !env.ALLOW_MEMORY_STORE) {
+    throw new Error('[Container] DATABASE_URL is required in production. Refusing MemoryRunStore.')
+  }
+  logger.warn('[Container] Using MemoryRunStore — not suitable for production')
   return new MemoryRunStore()
 }
 
 function createArtifactStore(): ArtifactStore {
-  if (env.DATABASE_URL) {
-    return new MySQLArtifactStore()
+  return env.DATABASE_URL ? new MySQLArtifactStore() : new MemoryArtifactStore()
+}
+
+function registerA2AAgents(
+  a2aRouter: A2ARouter,
+  executors: Map<string, AgentExecutor>,
+): void {
+  for (const def of pluginRegistry.listA2AAgentRuntimeDefinitions()) {
+    const executor = executors.get(def.id)
+    if (!executor) continue
+    a2aRouter.register(createLocalAgentAdapter({
+      agentId: executor.agentId,
+      execute: (input, ctx) => executor.execute(input, ctx),
+    } as Parameters<typeof createLocalAgentAdapter>[0]))
   }
-  return new MemoryArtifactStore()
 }
 
 export function createContainer(): AppContainer {
   logger.info('[Container] Initializing application dependencies')
+  registerBuiltinPlugins()
 
-  // ─── 存储层（根据环境自动选择）───────────────────────────
   const store = createStore()
   const artifactStore = createArtifactStore()
-
-  // ─── Memory 层（根据环境选择 MySQL / 内存）────────────────
-  const memoryStore: MemoryStore = env.DATABASE_URL
-    ? new MySQLMemoryStore()
-    : new MemoryMemoryStore()
+  const sessionsRepository = new SessionsRepository()
+  const memoryStore: MemoryStore = env.DATABASE_URL ? new MySQLMemoryStore() : new MemoryMemoryStore()
   const memoryRetriever = new MemoryRetriever(memoryStore)
-
-  // ─── ModelClient ─────────────────────────────────────────
   const modelClient = new VercelAIModelClient()
 
-  // ─── A2A 层 ──────────────────────────────────────────────
-  const a2aPolicy = new A2APolicy()
-  // A2A 权限：Supervisor 可调度核心专业 Agent 和创意写作 Agent
+  const capabilityRouter = new CapabilityRouter()
+  capabilityRouter.setCapabilityHints(pluginRegistry.listCapabilityHints())
+
+  const a2aPolicy = A2APolicy.fromPlugins(pluginRegistry.listA2APolicies())
   a2aPolicy.allow(SUPERVISOR_AGENT_ID, [
-    RESEARCH_AGENT_ID,
-    SUMMARY_AGENT_ID,
-    NL_TO_HAND_AGENT_ID,
-    OUTLINE_AGENT_ID,
-    WRITING_AGENT_ID,
-    REVIEW_AGENT_ID,
+    RESEARCH_AGENT_ID, SUMMARY_AGENT_ID, NL_TO_HAND_AGENT_ID,
+    OUTLINE_AGENT_ID, WRITING_AGENT_ID, REVIEW_AGENT_ID,
   ])
-  // WorkflowRunner 可以调用所有已注册 Agent
   a2aPolicy.allow(WORKFLOW_RUNNER_AGENT_ID, [
-    RESEARCH_AGENT_ID,
-    SUMMARY_AGENT_ID,
-    OUTLINE_AGENT_ID,
-    WRITING_AGENT_ID,
-    REVIEW_AGENT_ID,
+    RESEARCH_AGENT_ID, SUMMARY_AGENT_ID,
+    OUTLINE_AGENT_ID, WRITING_AGENT_ID, REVIEW_AGENT_ID,
   ])
 
   const a2aRouter = new A2ARouter()
   const a2aClient = new A2AClient(store, a2aPolicy, a2aRouter)
 
-  // ─── 专业 Agent 注册（核心 + 创意写作）────────────────────
-  const researchAgent = new ResearchAgent(modelClient, store, artifactStore)
-  const summaryAgent = new SummaryAgent(modelClient, store, artifactStore)
-  const nlToHandAgent = new NlToHandAgent(modelClient, store, artifactStore, new SessionsRepository())
-  const outlineAgent = new OutlineAgent(modelClient, store, artifactStore)
-  const writingAgent = new WritingAgent(modelClient, store, artifactStore)
-  const reviewAgent = new ReviewAgent(modelClient, store, artifactStore)
+  const assemblyDeps: AgentAssemblyDeps = {
+    modelClient, store, artifactStore, a2aClient, memoryRetriever, memoryStore, sessionsRepository,
+  }
 
-  a2aRouter.register(createLocalAgentAdapter(researchAgent))
-  a2aRouter.register(createLocalAgentAdapter(summaryAgent))
-  a2aRouter.register(createLocalAgentAdapter(nlToHandAgent))
-  a2aRouter.register(createLocalAgentAdapter(outlineAgent))
-  a2aRouter.register(createLocalAgentAdapter(writingAgent))
-  a2aRouter.register(createLocalAgentAdapter(reviewAgent))
+  const executorMap = new Map<string, AgentExecutor>()
+  for (const def of pluginRegistry.listAgentRuntimeDefinitions()) {
+    executorMap.set(def.id, def.factory(assemblyDeps))
+  }
+  registerA2AAgents(a2aRouter, executorMap)
 
-  // ─── SupervisorAgent ─────────────────────────────────────
   const supervisorAgent = new SupervisorAgent(modelClient, a2aClient, store, memoryRetriever, memoryStore)
   const executorRouter = new AgentExecutorRouter(SUPERVISOR_AGENT_ID)
     .register({
       agentId: SUPERVISOR_AGENT_ID,
       execute: (input, ctx) => supervisorAgent.execute(input as Parameters<typeof supervisorAgent.execute>[0], ctx),
     })
-    .register({
-      agentId: NL_TO_HAND_AGENT_ID,
-      execute: (input, ctx) => nlToHandAgent.execute(input as Parameters<typeof nlToHandAgent.execute>[0], ctx),
-    })
 
-  // ─── 会话摘要服务 ─────────────────────────────────────────
-  const sessionsRepository = new SessionsRepository()
+  for (const def of pluginRegistry.listEntryAgentRuntimeDefinitions()) {
+    const executor = executorMap.get(def.id)
+    if (executor) executorRouter.register(executor)
+  }
+
   const sessionSummaryService = new SessionSummaryService(sessionsRepository, modelClient)
-
-  // ─── RunManager ──────────────────────────────────────────
   const runManager = new RunManager(store, {
     agentId: executorRouter.agentId,
     execute: (input, ctx) => executorRouter.execute(input, ctx),
   }, sessionSummaryService)
 
-  // ─── Workflow 层 ─────────────────────────────────────────
   const workflowStore = env.DATABASE_URL ? new MySQLWorkflowStore() : new MemoryWorkflowStore()
   const workflowRegistry = new WorkflowRegistry()
+  for (const workflowRuntime of pluginRegistry.listWorkflowRuntimes()) {
+    workflowRegistry.register(workflowRuntime.definition)
+  }
   const workflowRunner = new WorkflowRunner(a2aClient, workflowStore, store)
 
-  // ─── Artifact 版本管理 ────────────────────────────────────
-  const artifactVersionManager = new ArtifactVersionManager(artifactStore)
-
-  // ─── Service 层 ──────────────────────────────────────
-  const agentsService = new AgentsService(a2aRouter)
-  const artifactsService = new ArtifactsService(artifactStore)
-
-  // ─── Project Service ─────────────────────────────────
-  const projectsService = new ProjectsService()
-
-  // ─── AgentTask Worker（异步 A2A 任务消费者）────────────────
   const agentTaskWorker = new AgentTaskWorker(store, a2aRouter, {
-    pollIntervalMs: 2000,
-    batchSize: 2,
-    // 只有 MySQL 模式下才启动 Worker（内存模式无持久化）
-    enabled: !!env.DATABASE_URL,
+    pollIntervalMs: 2000, batchSize: 2, enabled: !!env.DATABASE_URL,
   })
   agentTaskWorker.start()
 
-  const nlToHandRepairWorker = new NlToHandRepairWorker(store, artifactStore, new SessionsRepository(), {
-    pollIntervalMs: 3000,
-    batchSize: 1,
-    enabled: !!env.DATABASE_URL,
+  const nlToHandRepairWorker = new NlToHandRepairWorker(store, artifactStore, sessionsRepository, {
+    pollIntervalMs: 3000, batchSize: 1, enabled: !!env.DATABASE_URL,
   })
   nlToHandRepairWorker.start()
 
-  // ─── ToolInvocation Recovery Worker ───────────────────────
   const toolInvocationRecoveryWorker = new ToolInvocationRecoveryWorker(store, artifactStore, {
-    // 只有持久化存储模式需要跨进程重启恢复；内存模式没有可恢复状态源。
-    enabled: !!env.DATABASE_URL,
-    pollIntervalMs: 30000,
-    staleAfterMs: 120000,
-    batchSize: 20,
+    enabled: !!env.DATABASE_URL, pollIntervalMs: 30000, staleAfterMs: 120000, batchSize: 20,
   })
   toolInvocationRecoveryWorker.start()
 
+  const runRecoveryWorker = new RunRecoveryWorker(store, toolInvocationRecoveryWorker, {
+    enabled: !!env.DATABASE_URL, pollIntervalMs: 30000, staleAfterMs: 120000, batchSize: 20,
+    resumeRun: async (runId) => {
+      const run = await store.getRun(runId)
+      return run ? runManager.resumeRun(run) : false
+    },
+  })
+  runRecoveryWorker.start()
+
   logger.info('[Container] All dependencies initialized', {
     agents: a2aRouter.listAgentIds(),
+    entryAgents: executorRouter.listAgentIds(),
     storeType: env.DATABASE_URL ? 'mysql' : 'memory',
   })
 
   return {
-    runManager,
-    a2aClient,
-    a2aRouter,
-    a2aPolicy,
-    store,
-    artifactStore,
-    agentsService,
-    artifactsService,
-    workflowRunner,
-    workflowRegistry,
-    workflowStore,
-    humanGate,
-    artifactVersionManager,
-    projectsService,
-    memoryStore,
-    memoryRetriever,
-    agentTaskWorker,
-    toolInvocationRecoveryWorker,
-    nlToHandRepairWorker,
+    runManager, a2aClient, a2aRouter, a2aPolicy, store, artifactStore,
+    agentsService: new AgentsService(a2aRouter),
+    artifactsService: new ArtifactsService(artifactStore),
+    workflowRunner, workflowRegistry, workflowStore, humanGate,
+    artifactVersionManager: new ArtifactVersionManager(artifactStore),
+    projectsService: new ProjectsService(),
+    memoryStore, memoryRetriever, agentTaskWorker,
+    toolInvocationRecoveryWorker, runRecoveryWorker, nlToHandRepairWorker,
+    capabilityRouter, pluginRegistry,
   }
 }
 
-// 单例容器（在整个应用生命周期中共享）
 export const container = createContainer()

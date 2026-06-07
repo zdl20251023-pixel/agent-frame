@@ -64,6 +64,47 @@ export type AgentEvent =
       output: unknown
       timestamp: string
     }
+  | {
+      type: typeof EVENT_TYPES.TOOL_INVOCATION_UPDATED
+      runId: string
+      sessionId?: string
+      toolInvocationId: string
+      status: string
+      phase: string
+      artifactRef?: string
+      taskRef?: string
+      timestamp: string
+    }
+
+  // ─── AgentTask 异步任务事件 ───────────────────────────────
+  | {
+      type: typeof EVENT_TYPES.AGENT_TASK_STARTED
+      runId: string
+      sessionId?: string
+      taskId: string
+      toAgentId: string
+      retryCount?: number
+      timestamp: string
+    }
+  | {
+      type: typeof EVENT_TYPES.AGENT_TASK_COMPLETED
+      runId: string
+      sessionId?: string
+      taskId: string
+      toAgentId: string
+      outputPreview?: string
+      timestamp: string
+    }
+  | {
+      type: typeof EVENT_TYPES.AGENT_TASK_FAILED
+      runId: string
+      sessionId?: string
+      taskId: string
+      toAgentId: string
+      error: { code: string; message: string }
+      retryCount?: number
+      timestamp: string
+    }
 
   // ─── A2A 同步调用事件 ─────────────────────────────────────
   | {
@@ -139,9 +180,22 @@ export type AgentEvent =
   | {
       type: typeof EVENT_TYPES.ARTIFACT_VERSION_CREATED
       runId: string
+      sessionId?: string
       artifactId: string
       versionId: string
       version: number
+      diffSummary?: string
+      timestamp: string
+    }
+  | {
+      type: typeof EVENT_TYPES.ARTIFACT_REPAIR_COMPLETED
+      runId: string
+      sessionId?: string
+      artifactId: string
+      versionId: string
+      version: number
+      success: boolean
+      diffSummary?: string
       timestamp: string
     }
 

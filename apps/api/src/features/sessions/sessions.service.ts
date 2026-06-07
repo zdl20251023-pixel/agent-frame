@@ -75,6 +75,11 @@ export class SessionsService {
     }
   }
 
+  async assertSessionOwnedByUser(userId: string, sessionId: string): Promise<void> {
+    const session = await this.repo.getByIdForUser(sessionId, userId)
+    if (!session) throw new AppError('NOT_FOUND', 'Session not found')
+  }
+
   async touchSession(sessionId: string): Promise<void> {
     await this.repo.touchSession(sessionId)
   }

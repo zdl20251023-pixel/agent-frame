@@ -199,6 +199,12 @@ export class NlToHandAgent {
             status: TOOL_INVOCATION_STATUS.RUNNING,
             phase: TOOL_INVOCATION_PHASE.PRE_PARSE_AUTOFIX,
             heartbeatAt: now(),
+            recoveryPayload: {
+              kind: 'replay_tool',
+              toolName: event.toolName,
+              toolInput: lastToolInput,
+              innerRepairMode: 'disabled',
+            },
           })
           await emitter.emit({
             type: EVENT_TYPES.TOOL_CALL,

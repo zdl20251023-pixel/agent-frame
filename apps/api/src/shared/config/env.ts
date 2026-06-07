@@ -25,6 +25,11 @@ export const env = {
 
   // 数据库
   DATABASE_URL: process.env.DATABASE_URL ?? '',
+  /** 仅 development/test 允许 MemoryRunStore；生产必须配置 DATABASE_URL */
+  ALLOW_MEMORY_STORE: optionalBooleanEnv('ALLOW_MEMORY_STORE', false),
+
+  // Redis（可选，多实例 SSE / 队列）
+  REDIS_URL: process.env.REDIS_URL ?? '',
 
   // 跨域
   WEB_ORIGIN: optionalEnv('WEB_ORIGIN', 'http://localhost:5173'),
@@ -62,7 +67,12 @@ export function validateEnv() {
   if (!env.OPENAI_API_KEY && !env.ANTHROPIC_API_KEY && !env.DEEPSEEK_API_KEY && !env.GEMINI_API_KEY) {
     console.warn('[env] Warning: No model provider API key configured. AI calls will fail.')
   }
-  if (!env.DATABASE_URL) {
-    console.warn('[env] Warning: DATABASE_URL not set. MySQL store will be unavailable.')
+  if (!env.DATABASE_URL && env.isProd && !env.ALLOW_MEMORY_STORE) {
+    throw new Error(
+      '[env] FATAL: DATABASE_URL is required in production. Set ALLOW_MEMORY_STORE=true only for local dev.',
+    )
+  }
+  if (!env.DATABASE_URL && !env.ALLOW_MEMORY_STORE) {
+    console.warn('[env] Warning: DATABASE_URL not set. Using MemoryRunStore (data will be lost on restart).')
   }
 }

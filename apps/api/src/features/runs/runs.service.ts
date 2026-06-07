@@ -11,11 +11,11 @@ import {
   type CapabilityRouteResult,
   type CapabilityRouter,
 } from '../../capabilities/capability-router.js'
+import { capabilityRouteDecisionStore } from '../../capabilities/capability-route-decision.store.js'
 import { SUPERVISOR_AGENT_ID } from '../../ai/agents/agent-ids.js'
 
 // ============================================================
 // RunsService — Runs 功能业务逻辑层
-// route 只做 HTTP 入口/出口，业务逻辑集中在 service
 // ============================================================
 
 export type CreateRunParams = {
@@ -24,6 +24,9 @@ export type CreateRunParams = {
   userId: string
   projectId?: string
   sessionId?: string
+  idempotencyKey?: string
+  /** 用户确认澄清后选择的目标 Agent */
+  confirmedAgentId?: string
 }
 
 export type CreateRunResult = {
@@ -49,10 +52,22 @@ export class RunsService {
   async createRun(params: CreateRunParams): Promise<CreateRunResult> {
     const { userId, input } = params
 
-    // 1. 解析或创建 Session
+    if (params.idempotencyKey) {
+      const existing = await this.store.getRunByIdempotencyKey(params.idempotencyKey, userId)
+      if (existing) {
+        return {
+          runId: existing.id,
+          traceId: existing.traceId,
+          status: existing.status,
+          sessionId: existing.sessionId ?? '',
+          createdAt: existing.createdAt,
+          resolvedAgentId: existing.agentId,
+        }
+      }
+    }
+
     const sessionId = await this.sessionsService.resolveSessionId(userId, params.sessionId)
 
-    // 2. 构建预算内会话上下文（不含当前 Run，仅历史）
     const currentMessage = this.extractMessage(input)
     let conversationContext: ConversationContext | undefined
     try {
@@ -62,18 +77,41 @@ export class RunsService {
         currentMessage,
       })
     } catch {
-      // 上下文构建失败不阻塞 Run，降级为无历史
       conversationContext = undefined
     }
 
     const route = this.router.resolve({
       input,
-      requestedAgentId: params.agentId,
+      requestedAgentId: params.confirmedAgentId ?? params.agentId,
     })
+
+    await capabilityRouteDecisionStore.persist({
+      sessionId,
+      userId,
+      input,
+      requestedAgentId: params.agentId,
+      route,
+    })
+
+    if (route.type === 'ask_clarification' && !params.confirmedAgentId) {
+      throw new AppError(
+        'CAPABILITY_CLARIFICATION_REQUIRED',
+        route.question,
+        {
+          statusCode: 422,
+          details: {
+            clarificationQuestion: route.question,
+            confidence: route.confidence,
+            reason: route.reason,
+            candidateAgentId: route.candidateAgentId,
+          },
+        },
+      )
+    }
+
     const resolvedAgentId = route.type === 'agent' ? route.agentId : SUPERVISOR_AGENT_ID
     const routedInput = this.attachCapabilityRoute(input, route)
 
-    // 3. 创建 Run
     const run = await this.runManager.createRun({
       input: routedInput,
       agentId: resolvedAgentId,
@@ -81,9 +119,18 @@ export class RunsService {
       projectId: params.projectId,
       sessionId,
       conversationContext,
+      idempotencyKey: params.idempotencyKey,
     })
 
-    // 4. 更新 Session 活跃时间和标题
+    await capabilityRouteDecisionStore.persist({
+      runId: run.id,
+      sessionId,
+      userId,
+      input,
+      requestedAgentId: params.agentId,
+      route: { ...route, type: 'agent', agentId: resolvedAgentId } as CapabilityRouteResult,
+    })
+
     await this.sessionsService.touchSession(sessionId)
     const message = this.extractMessage(input)
     if (message) {
@@ -120,6 +167,14 @@ export class RunsService {
   async getEvents(runId: string, userId: string) {
     await this.assertRunAccess(runId, userId)
     return this.store.listEvents(runId)
+  }
+
+  async getStoredEvents(runId: string, userId: string, afterEventId?: number) {
+    await this.assertRunAccess(runId, userId)
+    if (afterEventId !== undefined && afterEventId > 0) {
+      return this.store.listEventsAfter(runId, afterEventId)
+    }
+    return this.store.listStoredEvents(runId)
   }
 
   async cancelRun(runId: string, userId: string): Promise<boolean> {

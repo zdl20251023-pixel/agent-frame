@@ -38,6 +38,7 @@ export type CreateRunOptions = {
   projectId?: string
   sessionId?: string
   conversationContext?: ConversationContext
+  idempotencyKey?: string
 }
 
 export type AgentExecutor = {
@@ -74,6 +75,7 @@ export class RunManager {
       agentId: options.agentId,
       sessionId: options.sessionId,
       input: options.input,
+      idempotencyKey: options.idempotencyKey,
     })
 
     const signal = cancellationManager.create(runId)
@@ -95,24 +97,68 @@ export class RunManager {
     // 发出 run.started 事件
     await this.emitter.emit({ type: EVENT_TYPES.RUN_STARTED, runId, agentId: options.agentId, timestamp: now() })
 
-    // 通过 Scheduler 执行（优先级队列 + 并发控制）
+    this.enqueueRun(run, context, options)
+
+    return run
+  }
+
+  /**
+   * 从持久化 Run 记录恢复执行。
+   *
+   * 生产环境进程重启后，RunRecoveryWorker 会把 stale 的 queued/running Run
+   * 重新交给 RunManager。这里复用原 runId/traceId/input，避免创建重复 Run；
+   * ToolInvocation 与 Artifact 写入依赖幂等键兜底，保证重复恢复不会重复产物。
+   */
+  async resumeRun(run: Run): Promise<boolean> {
+    if (run.status !== RUN_STATUS.QUEUED && run.status !== RUN_STATUS.RUNNING) return false
+    if (this.activeContexts.has(run.id)) return false
+
+    const signal = cancellationManager.create(run.id)
+    const context: RunContext = {
+      runId: run.id,
+      traceId: run.traceId,
+      agentId: run.agentId,
+      userId: run.userId,
+      sessionId: run.sessionId,
+      signal,
+      depth: 0,
+      callCount: 0,
+      totalCostUsd: 0,
+    }
+    this.activeContexts.set(run.id, context)
+
+    this.enqueueRun(run, context, {
+      input: run.input,
+      agentId: run.agentId,
+      userId: run.userId,
+      projectId: run.projectId,
+      sessionId: run.sessionId,
+      idempotencyKey: run.idempotencyKey,
+    })
+    logger.warn('[RunManager] Stale run resumed', { runId: run.id, traceId: run.traceId })
+    return true
+  }
+
+  private enqueueRun(run: Run, context: RunContext, options: CreateRunOptions): void {
     runScheduler
       .schedule(() => this.executeRun(run, context, options), {
-        id: runId,
+        id: run.id,
         priority: 5,
         waitTimeoutMs: env.RUN_TIMEOUT_MS,
       })
       .catch((err) => {
         logger.error('[RunManager] Scheduler rejected run', {
-          runId,
-          traceId,
+          runId: run.id,
+          traceId: run.traceId,
           errorCode: err instanceof Error ? err.message : 'SCHEDULER_ERROR',
         })
-        // 调度器超时 → 直接标记 Run 失败
-        this.store.updateRunStatus(runId, RUN_STATUS.FAILED).catch(() => {})
+        this.store.updateRunStatus(run.id, RUN_STATUS.FAILED, {
+          error: {
+            code: 'RUN_TIMEOUT',
+            message: err instanceof Error ? err.message : 'Scheduler rejected run',
+          },
+        }).catch(() => {})
       })
-
-    return run
   }
 
   private async executeRun(run: Run, context: RunContext, options: CreateRunOptions): Promise<void> {

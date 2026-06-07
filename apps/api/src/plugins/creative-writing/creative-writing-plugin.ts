@@ -1,6 +1,11 @@
 import type { AgentPlugin } from '../plugin.types.js'
 import { A2A_CALL_MODES, ARTIFACT_TYPES } from '@agent-frame/shared'
 import {
+  outlineAgentRuntime,
+  writingAgentRuntime,
+  reviewAgentRuntime,
+} from '../builtin-agent-runtimes.js'
+import {
   OUTLINE_AGENT_ID,
   WRITING_AGENT_ID,
   REVIEW_AGENT_ID,
@@ -39,6 +44,7 @@ export const creativeWritingPlugin: AgentPlugin = {
       costLevel: 'low',
       outputArtifactTypes: [ARTIFACT_TYPES.OUTLINE],
     })
+    ctx.registerAgentRuntime(outlineAgentRuntime)
 
     ctx.registerAgent({
       id: WRITING_AGENT_ID,
@@ -50,6 +56,7 @@ export const creativeWritingPlugin: AgentPlugin = {
       inputArtifactTypes: [ARTIFACT_TYPES.OUTLINE],
       outputArtifactTypes: [ARTIFACT_TYPES.DRAFT],
     })
+    ctx.registerAgentRuntime(writingAgentRuntime)
 
     ctx.registerAgent({
       id: REVIEW_AGENT_ID,
@@ -61,6 +68,7 @@ export const creativeWritingPlugin: AgentPlugin = {
       inputArtifactTypes: [ARTIFACT_TYPES.DRAFT],
       outputArtifactTypes: [ARTIFACT_TYPES.CREATIVE_WORK],
     })
+    ctx.registerAgentRuntime(reviewAgentRuntime)
 
     // ── Artifact 类型注册 ─────────────────────────────────────
 
@@ -189,6 +197,7 @@ export const creativeWritingPlugin: AgentPlugin = {
         {
           id: 'human-review',
           name: '人工审核',
+          agentId: 'human-gate',
           mode: 'manual',
         },
       ],

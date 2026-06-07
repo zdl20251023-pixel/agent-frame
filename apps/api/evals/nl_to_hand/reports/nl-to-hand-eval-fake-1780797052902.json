@@ -1,0 +1,630 @@
+{
+  "runAt": "2026-06-07T01:50:52.900Z",
+  "modelMode": "fake",
+  "metrics": {
+    "route_accuracy": 1,
+    "tool_call_rate": 1,
+    "schema_success_rate": 1,
+    "validation_success_rate": 1,
+    "artifact_success_rate": 1,
+    "patch_preservation_rate": 1,
+    "totalCases": 32,
+    "passedCases": 32,
+    "failedCases": 0,
+    "durationMs": 667
+  },
+  "caseResults": [
+    {
+      "id": "route_poker_high_conf_001",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 1,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true,
+        "minConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。",
+          "source": "heuristic"
+        }
+      }
+    },
+    {
+      "id": "route_poker_high_conf_002",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true,
+        "minConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。",
+          "source": "heuristic"
+        }
+      }
+    },
+    {
+      "id": "route_poker_high_conf_003",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true,
+        "minConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。",
+          "source": "heuristic"
+        }
+      }
+    },
+    {
+      "id": "route_general_chat_001",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "supervisor-agent",
+          "confidence": 1,
+          "reason": "未检测到明确专业能力意图，使用默认通用 Agent。",
+          "source": "default"
+        }
+      }
+    },
+    {
+      "id": "route_general_chat_002",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "supervisor-agent",
+          "confidence": 1,
+          "reason": "未检测到明确专业能力意图，使用默认通用 Agent。",
+          "source": "default"
+        }
+      }
+    },
+    {
+      "id": "route_general_chat_003",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "supervisor-agent",
+          "confidence": 1,
+          "reason": "未检测到明确专业能力意图，使用默认通用 Agent。",
+          "source": "default"
+        }
+      }
+    },
+    {
+      "id": "route_clarification_001",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "minConfidence": true,
+        "maxConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "ask_clarification",
+          "confidence": 0.42,
+          "reason": "检测到可能的牌局描述，但信息不足或上下文歧义较高。",
+          "question": "你是想把这手德州扑克牌局转换成标准牌谱吗？"
+        }
+      }
+    },
+    {
+      "id": "route_clarification_002",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "minConfidence": true,
+        "maxConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "ask_clarification",
+          "confidence": 0.64,
+          "reason": "检测到可能的牌局描述，但信息不足或上下文歧义较高。",
+          "question": "你是想把这手德州扑克牌局转换成标准牌谱吗？"
+        }
+      }
+    },
+    {
+      "id": "route_explicit_nl_agent",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "请求显式指定专业 Agent，能力路由不覆盖。",
+          "source": "explicit"
+        }
+      }
+    },
+    {
+      "id": "route_explicit_research_agent",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "research-agent",
+          "confidence": 1,
+          "reason": "请求显式指定专业 Agent，能力路由不覆盖。",
+          "source": "explicit"
+        }
+      }
+    },
+    {
+      "id": "route_poker_keywords_001",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true,
+        "minConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。",
+          "source": "heuristic"
+        }
+      }
+    },
+    {
+      "id": "route_poker_preflop_001",
+      "suite": "routing",
+      "passed": true,
+      "durationMs": 0,
+      "checks": {
+        "routeType": true,
+        "routeAgentId": true,
+        "source": true,
+        "minConfidence": true
+      },
+      "errors": [],
+      "details": {
+        "result": {
+          "type": "agent",
+          "agentId": "nl-to-hand-agent",
+          "confidence": 1,
+          "reason": "检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。",
+          "source": "heuristic"
+        }
+      }
+    },
+    {
+      "id": "golden_preflop_open_fold_6max_001",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 37,
+      "checks": {
+        "route": true,
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_preflop_open_fold_kk_co_002",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 32,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_flop_cbet_fold_003",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 30,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_heads_up_004",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 34,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_3bet_pot_005",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 33,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_route_and_tool_006",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 33,
+      "checks": {
+        "route": true,
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_validation_fail_007",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 35,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "failed"
+      }
+    },
+    {
+      "id": "golden_schema_fail_008",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 30,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "failed"
+      }
+    },
+    {
+      "id": "golden_no_tool_general_009",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 39,
+      "checks": {
+        "toolCalled": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "not_called"
+      }
+    },
+    {
+      "id": "golden_ante_game_010",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 39,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_explicit_agent_bypass_011",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 27,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_hero_position_utg_012",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 37,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_big_blind_two_013",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 30,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_poker_jargon_014",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 34,
+      "checks": {
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true,
+        "players": true,
+        "heroCards": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "golden_generate_hand_history_015",
+      "suite": "golden",
+      "passed": true,
+      "durationMs": 33,
+      "checks": {
+        "route": true,
+        "toolCalled": true,
+        "schemaSuccess": true,
+        "validationSuccess": true,
+        "artifactCreated": true
+      },
+      "errors": [],
+      "details": {
+        "runStatus": "completed",
+        "toolStatus": "success"
+      }
+    },
+    {
+      "id": "patch_change_hero_cards_khkd_001",
+      "suite": "patch",
+      "passed": true,
+      "durationMs": 32,
+      "checks": {
+        "toolCalled": true,
+        "patchPreservation": true,
+        "fieldsChanged": true,
+        "validationSuccess": true
+      },
+      "errors": [],
+      "details": {
+        "preservedCount": 8,
+        "totalPreserved": 8
+      }
+    },
+    {
+      "id": "patch_change_open_size_002",
+      "suite": "patch",
+      "passed": true,
+      "durationMs": 31,
+      "checks": {
+        "toolCalled": true,
+        "patchPreservation": true,
+        "fieldsChanged": true,
+        "validationSuccess": true
+      },
+      "errors": [],
+      "details": {
+        "preservedCount": 4,
+        "totalPreserved": 4
+      }
+    },
+    {
+      "id": "patch_preserve_blinds_003",
+      "suite": "patch",
+      "passed": true,
+      "durationMs": 35,
+      "checks": {
+        "toolCalled": true,
+        "patchPreservation": true,
+        "fieldsChanged": true,
+        "validationSuccess": true
+      },
+      "errors": [],
+      "details": {
+        "preservedCount": 6,
+        "totalPreserved": 6
+      }
+    },
+    {
+      "id": "patch_preserve_player_count_004",
+      "suite": "patch",
+      "passed": true,
+      "durationMs": 32,
+      "checks": {
+        "toolCalled": true,
+        "patchPreservation": true,
+        "fieldsChanged": true,
+        "validationSuccess": true
+      },
+      "errors": [],
+      "details": {
+        "preservedCount": 6,
+        "totalPreserved": 6
+      }
+    },
+    {
+      "id": "patch_add_flop_board_005",
+      "suite": "patch",
+      "passed": true,
+      "durationMs": 30,
+      "checks": {
+        "toolCalled": true,
+        "patchPreservation": true,
+        "fieldsChanged": true,
+        "validationSuccess": true
+      },
+      "errors": [],
+      "details": {
+        "preservedCount": 3,
+        "totalPreserved": 3
+      }
+    }
+  ],
+  "thresholdViolations": []
+}

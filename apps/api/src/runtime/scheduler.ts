@@ -1,4 +1,5 @@
 import { logger } from '../shared/observability/logger.js'
+import { acquireRunLease } from './redis-run-lease.js'
 
 // ============================================================
 // runtime/scheduler.ts — Run 并发控制 + 优先级队列
@@ -14,8 +15,9 @@ import { logger } from '../shared/observability/logger.js'
 // 设计决策：
 // - Scheduler 是独立模块，RunManager 调用 scheduler.schedule() 而不是直接执行
 // - 分离"调度决策"和"执行逻辑"，保持 RunManager 简洁
-// - 当前实现使用内存优先级队列（已满足 MVP 规模需求）
-//   后续若需分布式调度，可替换为 Redis ZSET 优先级队列
+// - 当前进程内保留闭包队列，保证执行简单可靠
+// - 生产多实例通过 RedisRunLease 做全局并发租约；Run 自身持久化在 MySQL
+// - 进程重启后 queued/running Run 由 RunRecoveryWorker 扫描并重新入队
 // ============================================================
 
 export type SchedulerPriority = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10
@@ -189,13 +191,25 @@ export class Scheduler {
     const waitMs = Date.now() - task.enqueuedAt
     logger.debug('[Scheduler] Task executing', { taskId: task.id, waitMs, running: this.runningCount })
 
+    let lease: Awaited<ReturnType<typeof acquireRunLease>>
+
     try {
+      lease = await acquireRunLease(task.id, task.waitTimeoutMs).catch((err) => {
+        logger.warn('[Scheduler] Distributed lease unavailable', {
+          taskId: task.id,
+          errorCode: err instanceof Error ? err.message : 'LEASE_UNAVAILABLE',
+        })
+        throw err
+      })
       const result = await task.execute()
       task.resolve(result)
       this.stats.completed++
     } catch (err) {
       task.reject(err)
     } finally {
+      if (lease) {
+        await lease.release().catch(() => {})
+      }
       this.runningCount--
       this.stats.running = this.runningCount
       this.processNext()

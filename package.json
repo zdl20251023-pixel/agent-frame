@@ -13,7 +13,9 @@
     "dev:web": "bun run --filter='@agent-frame/web' dev",
     "build": "bun run --filter='*' build",
     "lint": "bun run --filter='*' lint",
-    "test": "bun test"
+    "test": "bun test",
+    "eval:nl-to-hand": "bun run apps/api/evals/runner/eval-runner.ts",
+    "eval:nl-to-hand:ci": "bun run apps/api/evals/runner/eval-runner.ts --model=fake --fail-on-regression"
   },
   "devDependencies": {
     "typescript": "^5.5.0"

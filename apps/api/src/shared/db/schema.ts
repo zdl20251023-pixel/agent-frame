@@ -65,6 +65,8 @@ export const runs = mysqlTable(
     input: json('input').notNull(),
     output: json('output'),
     error: json('error'),
+    idempotencyKey: varchar('idempotency_key', { length: 160 }),
+    checkpointPayload: json('checkpoint_payload'),
     createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
     updatedAt: datetime('updated_at', { mode: 'string', fsp: 3 }).notNull(),
   },
@@ -73,6 +75,7 @@ export const runs = mysqlTable(
     index('idx_user_id').on(table.userId),
     index('idx_trace_id').on(table.traceId),
     index('idx_session_id').on(table.sessionId),
+    uniqueIndex('uq_runs_idempotency_user').on(table.idempotencyKey, table.userId),
   ],
 )
 
@@ -293,6 +296,32 @@ export const agentTasks = mysqlTable(
   ],
 )
 
+// ─── capability_route_decisions 表 ───────────────────────────
+// 能力路由决策审计，用于治理、评测与误路由分析。
+export const capabilityRouteDecisions = mysqlTable(
+  'capability_route_decisions',
+  {
+    id: varchar('id', { length: 36 }).primaryKey(),
+    runId: varchar('run_id', { length: 36 }),
+    sessionId: varchar('session_id', { length: 36 }),
+    userId: varchar('user_id', { length: 36 }),
+    inputHash: varchar('input_hash', { length: 64 }).notNull(),
+    requestedAgentId: varchar('requested_agent_id', { length: 100 }),
+    resolvedAgentId: varchar('resolved_agent_id', { length: 100 }),
+    routeType: varchar('route_type', { length: 30 }).notNull(),
+    confidence: decimal('confidence', { precision: 5, scale: 4 }).notNull(),
+    reason: text('reason').notNull(),
+    source: varchar('source', { length: 30 }).notNull(),
+    createdAt: datetime('created_at', { mode: 'string', fsp: 3 }).notNull(),
+  },
+  (table) => [
+    index('idx_capability_route_run_id').on(table.runId),
+    index('idx_capability_route_session_id').on(table.sessionId),
+    index('idx_capability_route_user_id').on(table.userId),
+    index('idx_capability_route_created_at').on(table.createdAt),
+  ],
+)
+
 // ─── workflow_runs 表 ────────────────────────────────────────
 // 存储 WorkflowRun 当前状态和各 Stage 结果；MVP 用 JSON 保持 schema 简洁。
 export const workflowRuns = mysqlTable(
@@ -328,5 +357,6 @@ export type Schema = {
   modelCallLogs: typeof modelCallLogs
   memories: typeof memories
   agentTasks: typeof agentTasks
+  capabilityRouteDecisions: typeof capabilityRouteDecisions
   workflowRuns: typeof workflowRuns
 }

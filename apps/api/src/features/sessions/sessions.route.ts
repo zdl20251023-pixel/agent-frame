@@ -3,9 +3,17 @@ import { sessionsService } from './sessions.service.js'
 import { requireAuthPlugin } from '../../shared/auth/auth.middleware.js'
 import { isAppError } from '../../shared/errors/app-error.js'
 import { container } from '../../container.js'
+import { SessionsRepository } from './sessions.repository.js'
+import { SessionProjectionService } from './session-projection.service.js'
+import { createSessionSseStream } from '../../shared/realtime/sse.handler.js'
 
-// 注入 RunStore
 sessionsService.setRunStore(container.store)
+
+const sessionProjectionService = new SessionProjectionService(
+  container.store,
+  container.artifactStore,
+  new SessionsRepository(),
+)
 
 // ============================================================
 // 会话 HTTP 路由
@@ -60,6 +68,37 @@ export const sessionsRoute = new Elysia({ prefix: '/sessions' })
   .get('/:sessionId/runs', async ({ authUser, params, set }) => {
     try {
       return await sessionsService.listSessionRuns(authUser!.id, params.sessionId)
+    } catch (err) {
+      if (isAppError(err)) {
+        set.status = err.statusCode
+        return err.toJSON()
+      }
+      throw err
+    }
+  })
+  .get('/:sessionId/projection', async ({ authUser, params, set }) => {
+    try {
+      await sessionsService.assertSessionOwnedByUser(authUser!.id, params.sessionId)
+      return await sessionProjectionService.build(params.sessionId, authUser!.id)
+    } catch (err) {
+      if (isAppError(err)) {
+        set.status = err.statusCode
+        return err.toJSON()
+      }
+      throw err
+    }
+  })
+  .get('/:sessionId/events', async ({ authUser, params, set }) => {
+    try {
+      await sessionsService.assertSessionOwnedByUser(authUser!.id, params.sessionId)
+      const headers = {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      }
+      return new Response(createSessionSseStream(params.sessionId), { headers })
     } catch (err) {
       if (isAppError(err)) {
         set.status = err.statusCode

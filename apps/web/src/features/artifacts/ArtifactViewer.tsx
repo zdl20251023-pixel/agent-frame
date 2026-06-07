@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { ArtifactVersion } from '@agent-frame/shared'
 import { useArtifact } from './useArtifact.ts'
 import { useArtifactVersions } from './useArtifactVersions.ts'
@@ -27,6 +27,17 @@ export function ArtifactViewer({ artifactId, showVersionHistory = false }: Artif
   const { artifact, content, loading, error, reload } = useArtifact(artifactId)
   const [expanded, setExpanded] = useState(true)
   const [historyOpen, setHistoryOpen] = useState(showVersionHistory)
+
+  useEffect(() => {
+    function handleArtifactVersionCreated(event: Event) {
+      const detail = (event as CustomEvent<{ artifactId?: string }>).detail
+      if (detail?.artifactId === artifactId) {
+        reload()
+      }
+    }
+    window.addEventListener('artifact:version-created', handleArtifactVersionCreated)
+    return () => window.removeEventListener('artifact:version-created', handleArtifactVersionCreated)
+  }, [artifactId, reload])
 
   if (loading) {
     return (

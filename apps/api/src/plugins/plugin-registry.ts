@@ -1,7 +1,15 @@
 import type { AgentPlugin, PluginAgentDefinition, ToolDefinition, WorkflowDefinition, ArtifactTypeDefinition } from './plugin.types.js'
+import type { CapabilityHints } from '@agent-frame/shared'
 import { logger } from '../shared/observability/logger.js'
 import { PluginContextFactory, type PluginRegistrations } from './plugin-context.js'
 import type { ToolFactory } from '../ai/tools/tool-factory.js'
+import type {
+  AgentAssemblyDeps,
+  PluginAgentRuntimeDefinition,
+  PluginA2APolicyEntry,
+  PluginWorkflowRuntimeDefinition,
+} from './plugin-runtime.types.js'
+import type { AgentExecutor } from '../runtime/run-manager.js'
 
 // ============================================================
 // plugins/plugin-registry.ts — 插件注册和查询（升级版）
@@ -22,8 +30,11 @@ export class PluginRegistry {
   // 共享注册存储，由 PluginContextFactory 写入
   private readonly store: PluginRegistrations = {
     agents: new Map<string, PluginAgentDefinition>(),
+    agentRuntimes: new Map(),
+    capabilityHints: new Map<string, CapabilityHints>(),
     tools: new Map<string, ToolDefinition>(),
     workflows: new Map<string, WorkflowDefinition>(),
+    workflowRuntimes: new Map<string, PluginWorkflowRuntimeDefinition>(),
     artifactTypes: new Map<string, ArtifactTypeDefinition>(),
     lifecycleHooks: new Map(),
   }
@@ -77,6 +88,38 @@ export class PluginRegistry {
     return this.listTools().filter((tool) => Boolean(tool.runtimeFactory))
   }
 
+  // ─── Agent Runtime 装配 ────────────────────────────────────
+
+  buildAgentRuntimes(deps: AgentAssemblyDeps): AgentExecutor[] {
+    return [...this.store.agentRuntimes.values()].map((def) => def.factory(deps))
+  }
+
+  listAgentRuntimeDefinitions(): PluginAgentRuntimeDefinition[] {
+    return [...this.store.agentRuntimes.values()]
+  }
+
+  listEntryAgentRuntimeDefinitions(): PluginAgentRuntimeDefinition[] {
+    return [...this.store.agentRuntimes.values()].filter((def) => def.isEntryAgent)
+  }
+
+  listA2AAgentRuntimeDefinitions(): PluginAgentRuntimeDefinition[] {
+    return [...this.store.agentRuntimes.values()].filter((def) => def.registerA2A !== false)
+  }
+
+  listCapabilityHints(): CapabilityHints[] {
+    return [...this.store.capabilityHints.values()]
+  }
+
+  listA2APolicies(): PluginA2APolicyEntry[] {
+    const policies: PluginA2APolicyEntry[] = []
+    for (const runtime of this.store.agentRuntimes.values()) {
+      if (runtime.a2aCanCall?.length) {
+        policies.push({ fromAgentId: runtime.id, toAgentIds: runtime.a2aCanCall })
+      }
+    }
+    return policies
+  }
+
   // ─── Workflow 查询 ─────────────────────────────────────────
 
   getWorkflow(id: string): WorkflowDefinition | undefined {
@@ -85,6 +128,10 @@ export class PluginRegistry {
 
   listWorkflows(): WorkflowDefinition[] {
     return Array.from(this.store.workflows.values())
+  }
+
+  listWorkflowRuntimes(): PluginWorkflowRuntimeDefinition[] {
+    return Array.from(this.store.workflowRuntimes.values())
   }
 
   // ─── ArtifactType 查询 ─────────────────────────────────────

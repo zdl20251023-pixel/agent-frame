@@ -19,6 +19,7 @@ const runsService = new RunsService(
   container.artifactStore,
   sessionsService,
   new ConversationContextBuilder(container.store, container.artifactStore, new SessionsRepository()),
+  container.capabilityRouter,
 )
 
 export const toolInvocationsRoute = new Elysia({ prefix: '/tool-invocations' })

@@ -9,6 +9,12 @@ import {
 import { getNlToHandPluginToolDefinition } from '../ai/tools/nl-to-hand-tool.js'
 import { pluginRegistry } from './plugin-registry.js'
 import { creativeWritingPlugin } from './creative-writing/index.js'
+import {
+  researchAgentRuntime,
+  summaryAgentRuntime,
+  nlToHandAgentRuntime,
+} from './builtin-agent-runtimes.js'
+import { BUILTIN_NL_TO_HAND_HINTS } from '../capabilities/capability-router.js'
 
 // ============================================================
 // plugins/builtin-plugins.ts — 内置 Agent 插件注册
@@ -76,6 +82,7 @@ const researchPlugin: AgentPlugin = {
       inputArtifactTypes: [],
       outputArtifactTypes: [ARTIFACT_TYPES.RESEARCH_REPORT],
     })
+    ctx.registerAgentRuntime(researchAgentRuntime)
 
     ctx.registerArtifactType({
       id: ARTIFACT_TYPES.RESEARCH_REPORT,
@@ -109,6 +116,7 @@ const summaryPlugin: AgentPlugin = {
       costLevel: 'low',
       outputArtifactTypes: [ARTIFACT_TYPES.SUMMARY],
     })
+    ctx.registerAgentRuntime(summaryAgentRuntime)
 
     ctx.registerArtifactType({
       id: ARTIFACT_TYPES.SUMMARY,
@@ -159,6 +167,8 @@ const nlToHandPlugin: AgentPlugin = {
     })
 
     ctx.registerTool(getNlToHandPluginToolDefinition())
+    ctx.registerAgentRuntime(nlToHandAgentRuntime)
+    ctx.registerCapabilityHints(BUILTIN_NL_TO_HAND_HINTS)
 
     ctx.log('info', 'NL to Hand plugin registered')
   },
@@ -207,6 +217,7 @@ const builtinWorkflowsPlugin: AgentPlugin = {
         {
           id: 'review',
           name: '人工审核',
+          agentId: 'human-gate',
           mode: 'manual',
         },
       ],

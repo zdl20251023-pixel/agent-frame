@@ -67,6 +67,9 @@ export const metrics = {
   activeRuns: new Gauge(),      // 当前正在执行的 Run 数
   activeSseConnections: new Gauge(),  // 当前活跃 SSE 连接数
   activeWsConnections: new Gauge(),   // 当前活跃 WebSocket 连接数
+  capabilityRouteTotal: new Counter(),
+  nlToHandValidationSuccessRate: new Gauge(),
+  nlToHandToolCallRate: new Gauge(),
 }
 
 // ─── 指标快照（供 GET /metrics 端点使用）───────────────────

@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, type FormEvent } from 'react'
 import { post } from '../../lib/http.ts'
 import { RunMessageItem } from '../runs/RunMessageItem.tsx'
 import type { SessionTranscript } from '@agent-frame/shared'
+import { useSessionProjection } from '../sessions/useSessionProjection.ts'
 
 type SessionRun = { runId: string; userMessage: string }
 
@@ -33,6 +34,10 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
   const [error, setError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const feedRef = useRef<HTMLDivElement>(null)
+  const {
+    projection,
+    error: projectionError,
+  } = useSessionProjection(sessionId)
 
   useEffect(() => {
     if (!transcript) {
@@ -164,7 +169,7 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
           flexShrink: 0,
         }}
       >
-        {error && (
+        {(error || projectionError) && (
           <div
             style={{
               marginBottom: '10px',
@@ -176,7 +181,18 @@ export function ChatPage({ sessionId, transcript, onSessionActivity }: Props) {
               fontSize: '13px',
             }}
           >
-            ✗ {error}
+            ✗ {error ?? projectionError}
+          </div>
+        )}
+
+        {projection && projection.pendingTasks.length > 0 && (
+          <div style={asyncTaskPanelStyle}>
+            {projection.pendingTasks.slice(0, 3).map((task) => (
+              <span key={task.id}>
+                后台任务 {task.type ?? task.toAgentId}: {task.status}
+                {task.retryCount > 0 ? ` · retry ${task.retryCount}/${task.maxRetries}` : ''}
+              </span>
+            ))}
           </div>
         )}
 
@@ -289,6 +305,19 @@ const activeEditNoticeStyle: React.CSSProperties = {
   border: '1px solid rgba(249,115,22,0.25)',
   background: 'rgba(249,115,22,0.1)',
   color: '#fed7aa',
+  fontSize: '12px',
+}
+
+const asyncTaskPanelStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '4px',
+  marginBottom: '10px',
+  padding: '8px 10px',
+  borderRadius: '10px',
+  border: '1px solid rgba(59,130,246,0.25)',
+  background: 'rgba(59,130,246,0.1)',
+  color: '#bfdbfe',
   fontSize: '12px',
 }
 

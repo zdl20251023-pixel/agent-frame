@@ -25,6 +25,7 @@ const runsService = new RunsService(
   container.artifactStore,
   sessionsService,
   conversationContextBuilder,
+  container.capabilityRouter,
 )
 
 // ============================================================
@@ -57,14 +58,17 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
 
   .post(
     '/',
-    async ({ authUser, body, set }) => {
+    async ({ authUser, body, request, set }) => {
       try {
+        const idempotencyKey = request.headers.get('idempotency-key')?.trim() || undefined
         const result = await runsService.createRun({
           input: body.input,
           agentId: body.agentId,
           userId: authUser!.id,
           projectId: body.projectId,
           sessionId: body.sessionId,
+          idempotencyKey,
+          confirmedAgentId: body.confirmedAgentId,
         })
         set.status = 201
         return result
@@ -85,6 +89,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
         agentId: t.Optional(t.String()),
         projectId: t.Optional(t.String()),
         sessionId: t.Optional(t.String()),
+        confirmedAgentId: t.Optional(t.String()),
       }),
     },
   )
@@ -139,23 +144,52 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
           return { runId: params.runId, events, total: events.length }
         }
 
-        const headers = {
-          'Content-Type': 'text/event-stream',
-          'Cache-Control': 'no-cache',
-          Connection: 'keep-alive',
-          'X-Accel-Buffering': 'no',
-          'Access-Control-Allow-Origin': '*',
+        const afterEventId = query.after ? Number(query.after) : undefined
+        if (afterEventId !== undefined && Number.isFinite(afterEventId) && afterEventId > 0) {
+          const stored = await runsService.getStoredEvents(params.runId, authUser!.id, afterEventId)
+          const encoder = new TextEncoder()
+          const stream = new ReadableStream({
+            start(controller) {
+              for (const item of stored) {
+                controller.enqueue(
+                  encoder.encode(`id: ${item.id}\ndata: ${JSON.stringify(item.event)}\n\n`),
+                )
+              }
+              if (run.status === RUN_STATUS.COMPLETED || run.status === RUN_STATUS.FAILED || run.status === RUN_STATUS.CANCELLED) {
+                controller.close()
+                return
+              }
+              const liveStream = createSseStream(params.runId, afterEventId)
+              const reader = liveStream.getReader()
+              const pump = (): void => {
+                reader.read().then(({ done, value }) => {
+                  if (done) {
+                    controller.close()
+                    return
+                  }
+                  controller.enqueue(value!)
+                  pump()
+                }).catch(() => controller.close())
+              }
+              pump()
+            },
+          })
+          return new Response(stream, { headers: buildSseHeaders() })
         }
+
+        const headers = buildSseHeaders()
 
         logger.info('[runs.route] SSE subscription started', { runId: params.runId })
 
         if (run.status === RUN_STATUS.COMPLETED || run.status === RUN_STATUS.FAILED || run.status === RUN_STATUS.CANCELLED) {
-          const pastEvents = await runsService.getEvents(params.runId, authUser!.id)
+          const pastEvents = await runsService.getStoredEvents(params.runId, authUser!.id)
           const encoder = new TextEncoder()
           const stream = new ReadableStream({
             start(controller) {
-              for (const event of pastEvents) {
-                controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`))
+              for (const item of pastEvents) {
+                controller.enqueue(
+                  encoder.encode(`id: ${item.id}\ndata: ${JSON.stringify(item.event)}\n\n`),
+                )
               }
               controller.close()
             },
@@ -176,6 +210,7 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
       params: t.Object({ runId: t.String() }),
       query: t.Object({
         replay: t.Optional(t.String()),
+        after: t.Optional(t.String()),
       }),
     },
   )
@@ -234,3 +269,13 @@ export const runsRoute = new Elysia({ prefix: '/runs' })
     },
     { params: t.Object({ runId: t.String() }) },
   )
+
+function buildSseHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'X-Accel-Buffering': 'no',
+    'Access-Control-Allow-Origin': '*',
+  }
+}

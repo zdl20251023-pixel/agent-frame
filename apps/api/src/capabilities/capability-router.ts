@@ -1,15 +1,19 @@
+import type { CapabilityHints } from '@agent-frame/shared'
 import {
   NL_TO_HAND_AGENT_ID,
   SUPERVISOR_AGENT_ID,
 } from '../ai/agents/agent-ids.js'
+import { metrics } from '../shared/observability/metrics.js'
 
 // ============================================================
-// CapabilityRouter — 入口能力路由
+// CapabilityRouter — 入口能力路由（插件化 + 治理）
 //
-// 职责：
-// - 在 Run 创建前根据用户输入选择最合适的入口 Agent。
-// - 不把能力识别逻辑塞进 SupervisorAgent，避免调度 Agent 膨胀。
-// - 显式专业 agentId 优先；默认 supervisor 入口允许被高置信能力规则改派。
+// 路由优先级：
+// 1. 显式 agentId → 直接返回
+// 2. 聚合 Plugin capabilityHints 评分
+// 3. 高置信 → 路由到专业 Agent
+// 4. 中置信 → ask_clarification（强制澄清，禁止 silent fallback）
+// 5. 低置信 → default supervisor
 // ============================================================
 
 export type CapabilityRouteResult =
@@ -18,13 +22,14 @@ export type CapabilityRouteResult =
       agentId: string
       confidence: number
       reason: string
-      source: 'explicit' | 'heuristic' | 'default'
+      source: 'explicit' | 'heuristic' | 'plugin' | 'default'
     }
   | {
       type: 'ask_clarification'
       question: string
       confidence: number
       reason: string
+      candidateAgentId?: string
     }
 
 export type CapabilityRouterInput = {
@@ -35,43 +40,41 @@ export type CapabilityRouterInput = {
 const HIGH_CONFIDENCE_THRESHOLD = 0.72
 const CLARIFICATION_THRESHOLD = 0.42
 
-const POKER_STRONG_PATTERNS = [
-  /牌谱/,
-  /德州/,
-  /德扑/,
-  /手牌/,
-  /公共牌/,
-  /翻牌|转牌|河牌/,
-  /\bflop\b/i,
-  /\bturn\b/i,
-  /\briver\b/i,
-  /\bpreflop\b/i,
-  /\bhero\b/i,
-  /\bUTG\b|\bHJ\b|\bCO\b|\bBTN\b|\bSB\b|\bBB\b/i,
-  /open\s*到|open\s*raise/i,
-  /3bet|4bet|c-bet|check|call|raise|fold|all-?in/i,
-]
-
-const POKER_WEAK_PATTERNS = [
-  /AK|AQ|AJ|KQ|AA|KK|QQ|JJ/,
-  /同花|不同花|口袋对子/,
-  /盲注|大盲|小盲|前注/,
-  /\b\d+\s*\/\s*\d+\b/,
-  /下注|加注|跟注|弃牌|过牌/,
-]
+/** 内置 nl_to_hand 能力提示（插件注册后会被 Plugin hints 覆盖/合并） */
+export const BUILTIN_NL_TO_HAND_HINTS: CapabilityHints = {
+  agentId: NL_TO_HAND_AGENT_ID,
+  strongPatterns: [
+    '牌谱', '德州', '德扑', '手牌', '公共牌', '翻牌', '转牌', '河牌',
+    '\\bflop\\b', '\\bturn\\b', '\\briver\\b', '\\bpreflop\\b', '\\bhero\\b',
+    '\\bUTG\\b|\\bHJ\\b|\\bCO\\b|\\bBTN\\b|\\bSB\\b|\\bBB\\b',
+    'open\\s*到|open\\s*raise',
+    '3bet|4bet|c-bet|check|call|raise|fold|all-?in',
+  ],
+  weakPatterns: [
+    'AK|AQ|AJ|KQ|AA|KK|QQ|JJ',
+    '同花|不同花|口袋对子',
+    '盲注|大盲|小盲|前注',
+    '\\b\\d+\\s*\\/\\s*\\d+\\b',
+    '下注|加注|跟注|弃牌|过牌',
+  ],
+  boostPatterns: ['转成?牌谱|生成牌谱|标准牌谱|复盘.*牌局'],
+  penaltyPatterns: ['\\bturn\\b|\\briver\\b'],
+  examples: ['6人桌，1/2，Hero UTG AhAs open到6，后面都弃牌'],
+  negativeExamples: ['今天天气怎么样', '帮我写一首诗'],
+}
 
 export class CapabilityRouter {
-  /**
-   * 根据输入和请求的 agentId 解析入口能力。
-   *
-   * 规则：
-   * - 明确指定非默认 Agent 时完全尊重用户选择。
-   * - 未指定或默认 supervisor 时，允许高置信牌局描述自动路由到 nl-to-hand-agent。
-   * - 低置信牌局意图返回 ask_clarification，当前调用方可选择降级到 supervisor。
-   */
+  private hints: CapabilityHints[] = [BUILTIN_NL_TO_HAND_HINTS]
+
+  /** 从 PluginRegistry 注入能力提示 */
+  setCapabilityHints(hints: CapabilityHints[]): void {
+    this.hints = hints.length > 0 ? hints : [BUILTIN_NL_TO_HAND_HINTS]
+  }
+
   resolve(input: CapabilityRouterInput): CapabilityRouteResult {
     const requested = input.requestedAgentId?.trim()
     if (requested && requested !== SUPERVISOR_AGENT_ID) {
+      metrics.capabilityRouteTotal.inc({ result: 'explicit', agentId: requested })
       return {
         type: 'agent',
         agentId: requested,
@@ -82,33 +85,47 @@ export class CapabilityRouter {
     }
 
     const message = extractMessage(input.input)
-    const pokerScore = scorePokerIntent(message)
-    if (pokerScore >= HIGH_CONFIDENCE_THRESHOLD) {
+    const scored = this.scoreAllHints(message)
+    const best = scored[0]
+
+    if (best && best.score >= (best.hints.minScore ?? HIGH_CONFIDENCE_THRESHOLD)) {
+      metrics.capabilityRouteTotal.inc({ result: 'routed', agentId: best.hints.agentId })
       return {
         type: 'agent',
-        agentId: NL_TO_HAND_AGENT_ID,
-        confidence: pokerScore,
-        reason: '检测到高置信德州扑克牌局描述，自动路由到自然语言转牌谱 Agent。',
-        source: 'heuristic',
+        agentId: best.hints.agentId,
+        confidence: best.score,
+        reason: `检测到高置信能力意图，路由到 ${best.hints.agentId}。`,
+        source: best.hints.agentId === NL_TO_HAND_AGENT_ID ? 'heuristic' : 'plugin',
       }
     }
 
-    if (pokerScore >= CLARIFICATION_THRESHOLD) {
+    if (best && best.score >= CLARIFICATION_THRESHOLD) {
+      metrics.capabilityRouteTotal.inc({ result: 'clarification', agentId: best.hints.agentId })
       return {
         type: 'ask_clarification',
-        confidence: pokerScore,
-        reason: '检测到可能的牌局描述，但信息不足或上下文歧义较高。',
-        question: '你是想把这手德州扑克牌局转换成标准牌谱吗？',
+        confidence: best.score,
+        reason: '检测到可能的专业能力意图，但信息不足或上下文歧义较高。',
+        question: best.hints.agentId === NL_TO_HAND_AGENT_ID
+          ? '你是想把这手德州扑克牌局转换成标准牌谱吗？'
+          : `你是想使用 ${best.hints.agentId} 相关能力吗？`,
+        candidateAgentId: best.hints.agentId,
       }
     }
 
+    metrics.capabilityRouteTotal.inc({ result: 'default', agentId: SUPERVISOR_AGENT_ID })
     return {
       type: 'agent',
       agentId: requested || SUPERVISOR_AGENT_ID,
-      confidence: 1 - pokerScore,
+      confidence: best ? 1 - best.score : 1,
       reason: '未检测到明确专业能力意图，使用默认通用 Agent。',
       source: requested ? 'explicit' : 'default',
     }
+  }
+
+  private scoreAllHints(message: string): Array<{ hints: CapabilityHints; score: number }> {
+    return this.hints
+      .map((hints) => ({ hints, score: scoreCapabilityHints(message, hints) }))
+      .sort((a, b) => b.score - a.score)
   }
 }
 
@@ -121,25 +138,42 @@ export function extractMessage(input: unknown): string {
   return ''
 }
 
-export function scorePokerIntent(message: string): number {
+export function scoreCapabilityHints(message: string, hints: CapabilityHints): number {
   const text = message.trim()
   if (!text) return 0
 
-  const strongMatches = countMatches(text, POKER_STRONG_PATTERNS)
-  const weakMatches = countMatches(text, POKER_WEAK_PATTERNS)
+  const strong = countPatternMatches(text, hints.strongPatterns ?? [])
+  const weak = countPatternMatches(text, hints.weakPatterns ?? [])
+  const boost = countPatternMatches(text, hints.boostPatterns ?? [])
+  const penalty = countPatternMatches(text, hints.penaltyPatterns ?? [])
+
   const hasActionLine = /(open|raise|call|fold|check|bet|all-?in|加注|跟注|弃牌|过牌|下注)/i.test(text)
   const hasPositionOrBlind = /(UTG|HJ|CO|BTN|SB|BB|盲注|大盲|小盲|\d+\s*\/\s*\d+)/i.test(text)
 
-  let score = Math.min(1, strongMatches * 0.22 + weakMatches * 0.1)
+  let score = Math.min(1, strong * 0.22 + weak * 0.1 + boost * 0.25)
   if (hasActionLine && hasPositionOrBlind) score += 0.2
-  if (/转成?牌谱|生成牌谱|标准牌谱|复盘.*牌局/.test(text)) score += 0.25
-  if (/\bturn\b|\briver\b/i.test(text) && !hasActionLine && !hasPositionOrBlind) score -= 0.25
+  if (penalty > 0 && !hasActionLine && !hasPositionOrBlind) score -= 0.25 * penalty
+
+  for (const neg of hints.negativeExamples ?? []) {
+    if (text.includes(neg)) score -= 0.3
+  }
 
   return Math.max(0, Math.min(1, Number(score.toFixed(2))))
 }
 
-function countMatches(text: string, patterns: RegExp[]): number {
-  return patterns.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0)
+/** @deprecated 兼容旧测试 */
+export function scorePokerIntent(message: string): number {
+  return scoreCapabilityHints(message, BUILTIN_NL_TO_HAND_HINTS)
+}
+
+function countPatternMatches(text: string, patterns: string[]): number {
+  return patterns.reduce((count, pattern) => {
+    try {
+      return count + (new RegExp(pattern, 'i').test(text) ? 1 : 0)
+    } catch {
+      return count + (text.includes(pattern) ? 1 : 0)
+    }
+  }, 0)
 }
 
 export const capabilityRouter = new CapabilityRouter()

@@ -16,6 +16,15 @@ export const EVENT_TYPES = {
   // Tool
   TOOL_CALL: 'tool.call',
   TOOL_RESULT: 'tool.result',
+  TOOL_INVOCATION_UPDATED: 'tool.invocation.updated',
+
+  // AgentTask（异步任务）
+  AGENT_TASK_STARTED: 'agent.task.started',
+  AGENT_TASK_COMPLETED: 'agent.task.completed',
+  AGENT_TASK_FAILED: 'agent.task.failed',
+
+  // Artifact 扩展
+  ARTIFACT_REPAIR_COMPLETED: 'artifact.repair.completed',
 
   // A2A
   AGENT_CALL_STARTED: 'agent.call.started',

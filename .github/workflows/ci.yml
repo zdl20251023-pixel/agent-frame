@@ -64,12 +64,39 @@ jobs:
           JWT_SECRET: ci-test-secret
           MAX_CONCURRENT_RUNS: '5'
           RUN_TIMEOUT_MS: '30000'
+          ALLOW_MEMORY_STORE: 'true'
 
-  # ─── 3. 构建验证 ──────────────────────────────────────────────
+  # ─── 3. NL to Hand LLM Eval（FakeModel 门禁）──────────────────
+  eval-nl-to-hand:
+    name: NL to Hand Eval
+    runs-on: ubuntu-latest
+    needs: test
+    if: vars.ENABLE_NL_TO_HAND_EVAL != 'false'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run NL to Hand eval (FakeModel CI gate)
+        run: bun run eval:nl-to-hand:ci
+        env:
+          DATABASE_URL: ''
+          REDIS_URL: ''
+          GOOGLE_GENERATIVE_AI_API_KEY: test-key-ci
+          JWT_SECRET: ci-test-secret
+
+  # ─── 4. 构建验证 ──────────────────────────────────────────────
   build:
     name: Build
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, eval-nl-to-hand]
+    if: always() && needs.test.result == 'success' && (needs.eval-nl-to-hand.result == 'success' || needs.eval-nl-to-hand.result == 'skipped')
     steps:
       - uses: actions/checkout@v4
 
@@ -89,7 +116,7 @@ jobs:
         run: bun run tsc --noEmit
         working-directory: apps/api
 
-  # ─── 4. Docker 构建验证（只在 main branch）─────────────────
+  # ─── 5. Docker 构建验证（只在 main branch）─────────────────
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest

@@ -3,6 +3,7 @@ import type { RunContext } from '../runtime/run-manager.js'
 import { AppError } from '../shared/errors/app-error.js'
 import { env } from '../shared/config/env.js'
 import { logger } from '../shared/observability/logger.js'
+import type { PluginA2APolicyEntry } from '../plugins/plugin-runtime.types.js'
 
 // ============================================================
 // A2APolicy — A2A 调用策略检查
@@ -44,6 +45,15 @@ export class A2APolicy {
       this.config.allowedCalls.get(fromAgentId)!.add(toId)
     }
     return this
+  }
+
+  /** 从插件注册表构建 A2APolicy */
+  static fromPlugins(policies: PluginA2APolicyEntry[], extra?: Partial<PolicyConfig>): A2APolicy {
+    const policy = new A2APolicy(extra)
+    for (const entry of policies) {
+      policy.allow(entry.fromAgentId, entry.toAgentIds)
+    }
+    return policy
   }
 
   assertCanCall(request: A2ARequest, context: RunContext): void {

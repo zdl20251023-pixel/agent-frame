@@ -1,0 +1,12 @@
+{"id":"route_poker_high_conf_001","input":"6人桌，1/2，Hero UTG AhAs open到6，后面都弃牌，帮我生成标准牌谱","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"heuristic","minConfidence":0.72}}
+{"id":"route_poker_high_conf_002","input":"德州扑克 9人桌 BTN Hero KdKs 3bet到18 BB fold","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"heuristic","minConfidence":0.72}}
+{"id":"route_poker_high_conf_003","input":"翻牌圈 Hero CO c-bet 半池，对手 fold，转成牌谱","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"heuristic","minConfidence":0.72}}
+{"id":"route_general_chat_001","input":"帮我总结一下这个项目的架构","expected":{"routeType":"agent","routeAgentId":"supervisor-agent","source":"default"}}
+{"id":"route_general_chat_002","input":"今天北京天气怎么样？","expected":{"routeType":"agent","routeAgentId":"supervisor-agent","source":"default"}}
+{"id":"route_general_chat_003","input":"写一段 Python 快速排序代码","expected":{"routeType":"agent","routeAgentId":"supervisor-agent","source":"default"}}
+{"id":"route_clarification_001","input":"UTG open range一般多宽","expected":{"routeType":"ask_clarification","minConfidence":0.42,"maxConfidence":0.72}}
+{"id":"route_clarification_002","input":"CO 3bet 频率多少","expected":{"routeType":"ask_clarification","minConfidence":0.42,"maxConfidence":0.72}}
+{"id":"route_explicit_nl_agent","input":"随便说点什么","requestedAgentId":"nl-to-hand-agent","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"explicit"}}
+{"id":"route_explicit_research_agent","input":"6人桌 Hero UTG AhAs open到6，转成牌谱","requestedAgentId":"research-agent","expected":{"routeType":"agent","routeAgentId":"research-agent","source":"explicit"}}
+{"id":"route_poker_keywords_001","input":"6max 1/2 Hero HJ QQ open 6bb 全部弃牌 生成牌谱","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"heuristic","minConfidence":0.72}}
+{"id":"route_poker_preflop_001","input":"牌谱：6人桌大盲2，Hero UTG AhAs raise 6，fold fold fold fold fold","expected":{"routeType":"agent","routeAgentId":"nl-to-hand-agent","source":"heuristic","minConfidence":0.72}}

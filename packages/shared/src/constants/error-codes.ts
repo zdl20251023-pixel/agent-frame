@@ -6,6 +6,7 @@
 export type AppErrorCode =
   // ─── HTTP / 通用 ──────────────────────────────────────────
   | 'BAD_REQUEST'             // 请求参数错误
+  | 'CAPABILITY_CLARIFICATION_REQUIRED' // 能力路由需用户澄清
   | 'UNAUTHORIZED'            // 未认证
   | 'FORBIDDEN'               // 已认证但无权限
   | 'NOT_FOUND'               // 资源不存在
@@ -40,6 +41,7 @@ export type AppErrorCode =
 /** HTTP 状态码映射（前端可据此处理 HTTP 响应） */
 export const ERROR_HTTP_STATUS: Partial<Record<AppErrorCode, number>> = {
   BAD_REQUEST: 400,
+  CAPABILITY_CLARIFICATION_REQUIRED: 422,
   UNAUTHORIZED: 401,
   FORBIDDEN: 403,
   NOT_FOUND: 404,

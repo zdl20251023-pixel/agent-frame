@@ -6,6 +6,11 @@ import type {
   WorkflowDefinition,
   ArtifactTypeDefinition,
 } from './plugin.types.js'
+import type { CapabilityHints } from '@agent-frame/shared'
+import type {
+  PluginAgentRuntimeDefinition,
+  PluginWorkflowRuntimeDefinition,
+} from './plugin-runtime.types.js'
 import { logger } from '../shared/observability/logger.js'
 import { toolRegistry } from '../ai/tools/tool-factory.js'
 
@@ -45,8 +50,11 @@ export type FullPluginContext = PluginContext & {
 /** 注册结果的内部存储（由 PluginContextFactory 管理）*/
 export type PluginRegistrations = {
   agents: Map<string, PluginAgentDefinition>
+  agentRuntimes: Map<string, PluginAgentRuntimeDefinition>
+  capabilityHints: Map<string, CapabilityHints>
   tools: Map<string, ToolDefinition>
   workflows: Map<string, WorkflowDefinition>
+  workflowRuntimes: Map<string, PluginWorkflowRuntimeDefinition>
   artifactTypes: Map<string, ArtifactTypeDefinition>
   lifecycleHooks: Map<string, PluginLifecycleHooks>
 }
@@ -80,6 +88,23 @@ export class PluginContextFactory {
         logger.info('[PluginContext] Agent registered', { agentId: agent.id, pluginId })
       },
 
+      registerAgentRuntime: (runtime: PluginAgentRuntimeDefinition) => {
+        if (store.agentRuntimes.has(runtime.id)) {
+          logger.warn('[PluginContext] Agent runtime already registered', { agentId: runtime.id, pluginId })
+          return
+        }
+        store.agentRuntimes.set(runtime.id, runtime)
+        if (runtime.capabilityHints) {
+          store.capabilityHints.set(runtime.id, runtime.capabilityHints)
+        }
+        logger.info('[PluginContext] Agent runtime registered', { agentId: runtime.id, pluginId })
+      },
+
+      registerCapabilityHints: (hints: CapabilityHints) => {
+        store.capabilityHints.set(hints.agentId, hints)
+        logger.info('[PluginContext] Capability hints registered', { agentId: hints.agentId, pluginId })
+      },
+
       registerTool: (tool: ToolDefinition) => {
         if (store.tools.has(tool.id)) {
           logger.warn('[PluginContext] Tool already registered', { toolId: tool.id, pluginId })
@@ -102,7 +127,27 @@ export class PluginContextFactory {
           return
         }
         store.workflows.set(workflow.id, workflow)
+        store.workflowRuntimes.set(workflow.id, {
+          id: workflow.id,
+          definition: workflow,
+        })
         logger.info('[PluginContext] Workflow registered', { workflowId: workflow.id, pluginId })
+      },
+
+      registerWorkflowRuntime: (runtime: PluginWorkflowRuntimeDefinition) => {
+        if (store.workflowRuntimes.has(runtime.id)) {
+          logger.warn('[PluginContext] Workflow runtime already registered', {
+            workflowId: runtime.id,
+            pluginId,
+          })
+          return
+        }
+        store.workflowRuntimes.set(runtime.id, runtime)
+        store.workflows.set(runtime.definition.id, runtime.definition)
+        logger.info('[PluginContext] Workflow runtime registered', {
+          workflowId: runtime.id,
+          pluginId,
+        })
       },
 
       registerArtifactType: (type: ArtifactTypeDefinition) => {

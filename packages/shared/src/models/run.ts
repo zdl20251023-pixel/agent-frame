@@ -5,6 +5,16 @@ import type { RunStatus, StepStatus } from '../constants/run-constants.js'
 // Run 和 Step 核心模型
 // ============================================================
 
+/** Run 检查点载荷 — 用于故障恢复时定位最后安全步骤 */
+export type RunCheckpointPayload = {
+  lastCompletedStepId?: string
+  lastStepType?: string
+  agentId?: string
+  toolInvocationId?: string
+  toolPhase?: string
+  updatedAt: string
+}
+
 export type Run = {
   id: string           // Run 唯一 ID（ULID）
   traceId: string      // 链路追踪 ID
@@ -16,6 +26,10 @@ export type Run = {
   input: unknown       // 初始输入
   output?: unknown     // 最终输出
   error?: RunError     // 失败信息
+  /** 客户端幂等键，防止重复创建 Run */
+  idempotencyKey?: string
+  /** 最后完成的步骤检查点 */
+  checkpointPayload?: RunCheckpointPayload
   createdAt: string    // ISO 8601
   updatedAt: string    // ISO 8601
 }
@@ -49,6 +63,7 @@ export type CreateRunInput = {
   agentId?: string
   sessionId?: string
   input: unknown
+  idempotencyKey?: string
 }
 
 export type CreateStepInput = {
