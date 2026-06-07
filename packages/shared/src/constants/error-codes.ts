@@ -40,15 +40,15 @@ export type AppErrorCode =
 
 /** HTTP 状态码映射（前端可据此处理 HTTP 响应） */
 export const ERROR_HTTP_STATUS: Partial<Record<AppErrorCode, number>> = {
-  BAD_REQUEST: 400,
-  CAPABILITY_CLARIFICATION_REQUIRED: 422,
-  UNAUTHORIZED: 401,
-  FORBIDDEN: 403,
-  NOT_FOUND: 404,
-  RATE_LIMIT: 429,
-  BUDGET_EXCEEDED: 402,
-  INTERNAL_ERROR: 500,
-  MODEL_CALL_FAILED: 502,
-  AGENT_CALL_TIMEOUT: 504,
-  RUN_TIMEOUT: 504,
+  BAD_REQUEST: 400,                         // 请求格式或参数错误
+  CAPABILITY_CLARIFICATION_REQUIRED: 422,   // 能力路由需要用户进一步澄清
+  UNAUTHORIZED: 401,                        // 未登录或认证失败
+  FORBIDDEN: 403,                           // 已认证但无访问权限
+  NOT_FOUND: 404,                           // 目标资源不存在
+  RATE_LIMIT: 429,                          // 请求触发限流
+  BUDGET_EXCEEDED: 402,                     // 超出预算限制
+  INTERNAL_ERROR: 500,                      // 服务端未分类错误
+  MODEL_CALL_FAILED: 502,                   // 下游模型调用失败
+  AGENT_CALL_TIMEOUT: 504,                  // Agent 间调用超时
+  RUN_TIMEOUT: 504,                         // Run 执行超时
 } as const
