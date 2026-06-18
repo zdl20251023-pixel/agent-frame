@@ -1,0 +1,28 @@
+# ChatGPT 自定义 GPT 配置（PRD 宣讲前 AI 自查）
+# 用法：在 ChatGPT「创建 GPT」中按本文件字段填写，并上传 knowledge_files 列出的文件。
+name: PRD 宣讲前自查助手
+description: 以内置宣讲前 Checklist 为规则来源，对 PRD 做宣讲前质量门禁自查，判断研发能否据此理解需求、评估工作量、拆解任务、识别风险并完成验收，并输出是否可宣讲的结论与补充清单。用户只需提供 PRD，Checklist 已内置。
+
+# 粘贴到 ChatGPT 的「Instructions（指令）」框：见同目录 chatgpt-instructions.md
+instructions_file: chatgpt-instructions.md
+
+# 上传到 ChatGPT 的「Knowledge（知识）」：把以下文件作为知识库上传
+# 其中 checklist.md 是内置 Checklist（规则来源），用户无需在对话中再提供 Checklist
+knowledge_files:
+  - ../references/checklist.md
+  - ../references/review-rubric.md
+  - ../references/output-template.md
+  - ../references/examples.md
+
+# 建议开启的能力（按需）
+capabilities:
+  web_browsing: false
+  code_interpreter: false
+  dalle_image_generation: false
+
+# 开场白（conversation starters）
+conversation_starters:
+  - 我把 PRD 发你，帮我判断能不能宣讲
+  - 帮我用内置 Checklist 做一次 PRD 宣讲前自查
+  - 这是修订后的 PRD，帮我做二次检查，对比上一轮问题是否修复
+  - 帮我列出宣讲前必须补齐的 P0 问题
