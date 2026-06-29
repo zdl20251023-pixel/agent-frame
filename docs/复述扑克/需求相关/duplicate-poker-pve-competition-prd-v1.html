@@ -1,0 +1,1758 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>复式 PvE 排名赛场 PRD｜HTML 版</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --paper: #ffffff;
+      --ink: #182033;
+      --muted: #667085;
+      --soft: #eef2ff;
+      --soft-2: #f3f6fb;
+      --line: #d9e0ec;
+      --brand: #3f5efb;
+      --brand-2: #6d5dfc;
+      --green: #12a37f;
+      --amber: #f59e0b;
+      --red: #e34b4b;
+      --blue: #2563eb;
+      --purple: #7c3aed;
+      --card-shadow: 0 18px 50px rgba(21, 34, 66, 0.10);
+      --small-shadow: 0 8px 24px rgba(21, 34, 66, 0.08);
+      --radius-xl: 28px;
+      --radius-lg: 20px;
+      --radius-md: 14px;
+      --radius-sm: 10px;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at top left, rgba(63, 94, 251, 0.16), transparent 32rem),
+        radial-gradient(circle at top right, rgba(18, 163, 127, 0.12), transparent 28rem),
+        var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.62;
+    }
+
+    a { color: var(--brand); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .doc {
+      width: min(1440px, calc(100% - 40px));
+      margin: 28px auto 64px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      color: #fff;
+      background:
+        linear-gradient(135deg, rgba(24, 32, 51, 0.98), rgba(45, 50, 92, 0.96) 58%, rgba(63, 94, 251, 0.92)),
+        radial-gradient(circle at 80% 10%, rgba(255,255,255,0.18), transparent 20rem);
+      border-radius: var(--radius-xl);
+      padding: 42px 44px 34px;
+      box-shadow: var(--card-shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -110px -180px auto;
+      width: 410px;
+      height: 410px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 24px;
+      align-items: flex-start;
+      position: relative;
+      z-index: 1;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      color: rgba(255, 255, 255, 0.92);
+      font-size: 13px;
+      letter-spacing: .02em;
+    }
+
+    h1, h2, h3, h4 { line-height: 1.22; margin: 0; }
+    h1 {
+      max-width: 900px;
+      font-size: clamp(34px, 5vw, 62px);
+      letter-spacing: -0.045em;
+      margin: 18px 0 18px;
+    }
+
+    .subtitle {
+      max-width: 940px;
+      color: rgba(255,255,255,0.82);
+      font-size: 18px;
+      margin: 0 0 24px;
+    }
+
+    .version-card {
+      min-width: 260px;
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 22px;
+      padding: 18px 20px;
+      backdrop-filter: blur(10px);
+    }
+
+    .version-card .line {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+      color: rgba(255,255,255,0.84);
+      font-size: 13px;
+    }
+    .version-card .line:last-child { border-bottom: 0; }
+    .version-card b { color: #fff; font-weight: 700; }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .meta-item {
+      background: rgba(255, 255, 255, 0.10);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 18px;
+      padding: 16px;
+    }
+    .meta-item span { display: block; color: rgba(255,255,255,0.62); font-size: 12px; margin-bottom: 5px; }
+    .meta-item strong { display: block; color: #fff; font-size: 16px; }
+
+    .toc {
+      position: sticky;
+      top: 12px;
+      z-index: 10;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      overflow-x: auto;
+      padding: 12px;
+      margin: 20px 0;
+      border: 1px solid rgba(217, 224, 236, 0.9);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.86);
+      backdrop-filter: blur(18px);
+      box-shadow: 0 12px 40px rgba(21,34,66,0.08);
+    }
+
+    .toc a {
+      flex: 0 0 auto;
+      padding: 8px 14px;
+      border-radius: 999px;
+      color: #344054;
+      font-size: 13px;
+      background: transparent;
+      white-space: nowrap;
+    }
+    .toc a:hover { background: var(--soft); text-decoration: none; }
+
+    .section {
+      margin: 20px 0;
+      background: var(--paper);
+      border: 1px solid rgba(217, 224, 236, 0.95);
+      border-radius: var(--radius-xl);
+      padding: 30px;
+      box-shadow: var(--small-shadow);
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: flex-start;
+      margin-bottom: 22px;
+    }
+
+    .kicker {
+      color: var(--brand);
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+
+    h2 { font-size: clamp(24px, 3vw, 36px); letter-spacing: -0.026em; }
+    h3 { font-size: 20px; letter-spacing: -0.01em; margin: 18px 0 10px; }
+    h4 { font-size: 15px; margin: 14px 0 8px; }
+
+    .lead { color: var(--muted); font-size: 16px; margin: 10px 0 0; max-width: 1000px; }
+
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      background: var(--soft-2);
+      color: #475467;
+      border: 1px solid rgba(217,224,236,.9);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .badge.primary { background: #e8edff; color: #2744ca; border-color: #cad5ff; }
+    .badge.green { background: #e8faf4; color: #087a61; border-color: #bceadc; }
+    .badge.amber { background: #fff5dd; color: #a15c00; border-color: #ffe1a3; }
+    .badge.red { background: #fff0f0; color: #b42318; border-color: #ffd1d1; }
+
+    .decision-grid,
+    .metric-grid,
+    .cards-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .decision,
+    .metric,
+    .mini-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 18px;
+      background: linear-gradient(180deg, #fff, #fbfcff);
+    }
+
+    .decision strong,
+    .metric strong,
+    .mini-card strong { display: block; font-size: 16px; margin-bottom: 6px; }
+    .decision p,
+    .mini-card p { margin: 0; color: var(--muted); font-size: 14px; }
+    .metric .number { font-size: 30px; font-weight: 850; letter-spacing: -.04em; color: var(--brand); }
+    .metric .label { color: var(--muted); font-size: 13px; }
+
+    .triad-grid {
+      display: grid;
+      grid-template-columns: minmax(290px, 1.04fr) minmax(360px, 1.12fr) minmax(310px, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .triad-col {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .triad-col .col-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      background: #f9fbff;
+      font-weight: 850;
+      color: #24304d;
+    }
+    .triad-col .col-title small { color: var(--muted); font-weight: 700; }
+    .triad-col .col-body { padding: 16px; }
+
+    ul, ol { padding-left: 1.3em; margin: 8px 0 0; }
+    li { margin: 5px 0; }
+
+    .callout {
+      margin: 14px 0;
+      padding: 14px 16px;
+      border-radius: 16px;
+      background: #f8fbff;
+      border: 1px solid #dce7ff;
+      color: #344054;
+    }
+    .callout strong { color: #1d2a52; }
+    .callout.warn { background: #fff8e8; border-color: #ffe1a3; }
+    .callout.danger { background: #fff3f3; border-color: #ffd1d1; }
+    .callout.good { background: #edfbf6; border-color: #bceadc; }
+
+    table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      margin: 14px 0;
+      overflow: hidden;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      font-size: 13px;
+    }
+    th, td { padding: 10px 12px; text-align: left; vertical-align: top; border-bottom: 1px solid var(--line); }
+    th { background: #f7f9fd; color: #344054; font-weight: 850; }
+    tr:last-child td { border-bottom: 0; }
+    td { color: #475467; }
+
+    code, pre { font-family: var(--mono); }
+    code { background: #f1f4f9; padding: 2px 5px; border-radius: 6px; font-size: .92em; }
+    pre {
+      margin: 12px 0 0;
+      padding: 14px 16px;
+      background: #101828;
+      color: #e6eaf2;
+      border-radius: 16px;
+      overflow: auto;
+      font-size: 12.5px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+    }
+    .formula pre { background: #13203a; }
+
+    /* Mock UI primitives */
+    .mock-shell {
+      border: 1px solid #d6deec;
+      border-radius: 22px;
+      background: #f4f7fb;
+      overflow: hidden;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+    }
+    .mock-topbar {
+      height: 42px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 14px;
+      background: #172033;
+      color: #fff;
+      font-size: 12px;
+    }
+    .mock-dots { display: flex; gap: 6px; }
+    .mock-dot { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+    .mock-content { padding: 14px; }
+    .mock-card {
+      background: #fff;
+      border: 1px solid #dfe6f2;
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: 0 4px 14px rgba(21,34,66,0.05);
+    }
+    .mock-card:last-child { margin-bottom: 0; }
+    .mock-card h5 { margin: 0 0 10px; font-size: 14px; }
+    .mock-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid #edf1f7;
+      font-size: 12px;
+      color: #475467;
+    }
+    .mock-row:last-child { border-bottom: 0; }
+    .mock-input {
+      background: #f6f8fc;
+      border: 1px solid #dfe6f2;
+      color: #24304d;
+      border-radius: 10px;
+      padding: 7px 9px;
+      min-width: 86px;
+      text-align: right;
+      font-weight: 800;
+    }
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      background: #edf2ff;
+      color: #3146c8;
+      border: 1px solid #d7defe;
+    }
+    .chip.must { background: #fff4df; color: #955600; border-color: #ffdda3; }
+    .chip.ok { background: #e8faf4; color: #087a61; border-color: #bceadc; }
+    .chip.gray { background: #f2f4f7; color: #667085; border-color: #e4e7ec; }
+    .chip.bad { background: #fff0f0; color: #b42318; border-color: #ffd1d1; }
+
+    .phone-wrap { display: flex; justify-content: center; }
+    .phone {
+      width: 292px;
+      min-height: 600px;
+      border-radius: 34px;
+      background: #101828;
+      padding: 12px;
+      box-shadow: 0 22px 60px rgba(16,24,40,.22);
+    }
+    .phone-screen {
+      min-height: 576px;
+      border-radius: 25px;
+      overflow: hidden;
+      background: #f3f6fb;
+      border: 1px solid rgba(255,255,255,.08);
+    }
+    .phone-status {
+      height: 30px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      color: #fff;
+      background: #172033;
+      font-size: 11px;
+    }
+    .app-header {
+      padding: 14px;
+      background: linear-gradient(135deg, #172033, #3f5efb);
+      color: #fff;
+    }
+    .app-header small { display: block; opacity: .78; }
+    .app-title { font-size: 18px; font-weight: 900; letter-spacing: -.02em; }
+    .app-body { padding: 12px; }
+    .mobile-card {
+      background: #fff;
+      border: 1px solid #dfe6f2;
+      border-radius: 16px;
+      padding: 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 5px 16px rgba(21,34,66,0.06);
+      font-size: 12px;
+    }
+    .primary-btn, .secondary-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 38px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 900;
+      margin-top: 10px;
+    }
+    .primary-btn { background: var(--brand); color: #fff; }
+    .secondary-btn { background: #eef2ff; color: #2d43c9; }
+
+    .progressbar { height: 8px; border-radius: 999px; background: #e7ecf5; overflow: hidden; margin: 9px 0; }
+    .progressbar > span { display: block; height: 100%; background: linear-gradient(90deg, #3f5efb, #12a37f); border-radius: inherit; }
+
+    .table-felt {
+      height: 220px;
+      border-radius: 28px;
+      background: radial-gradient(circle at center, #177b67, #0e4f43 70%);
+      border: 10px solid #23443d;
+      position: relative;
+      color: #fff;
+      margin: 8px 0 12px;
+      box-shadow: inset 0 6px 18px rgba(0,0,0,.2);
+    }
+    .seat {
+      position: absolute;
+      width: 54px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      background: rgba(16,24,40,.82);
+      border: 1px solid rgba(255,255,255,.16);
+      font-size: 10px;
+    }
+    .seat.s1 { top: 10px; left: 50%; transform: translateX(-50%); }
+    .seat.s2 { top: 72px; right: 8px; }
+    .seat.s3 { bottom: 12px; right: 42px; }
+    .seat.hero { bottom: 10px; left: 50%; transform: translateX(-50%); background: #fff; color: #172033; font-weight: 900; }
+    .seat.s5 { bottom: 12px; left: 42px; }
+    .seat.s6 { top: 72px; left: 8px; }
+    .pot { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; font-size: 11px; }
+    .board { display: flex; gap: 4px; justify-content: center; margin-top: 6px; }
+    .card {
+      width: 22px;
+      height: 30px;
+      border-radius: 5px;
+      background: #fff;
+      color: #172033;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 10px;
+      box-shadow: 0 2px 5px rgba(0,0,0,.2);
+    }
+    .card.red { color: #c93333; }
+
+    .action-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; }
+    .action-btn { background: #fff; border: 1px solid #dfe6f2; border-radius: 10px; padding: 7px 4px; text-align: center; font-size: 11px; font-weight: 850; }
+    .action-btn.primary { background: #3f5efb; color: #fff; border-color: #3f5efb; }
+
+    .leader-row {
+      display: grid;
+      grid-template-columns: 38px 1fr auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 0;
+      border-bottom: 1px solid #edf1f7;
+      font-size: 12px;
+    }
+    .leader-row:last-child { border-bottom: 0; }
+    .rank-pill { width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: #eef2ff; color: #3146c8; font-weight: 900; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #dde5ff, #c7f2e5); display: inline-block; margin-right: 7px; vertical-align: middle; }
+    .score { font-weight: 950; color: #182033; }
+
+    .stat-bars { display: grid; gap: 8px; margin-top: 10px; }
+    .bar-row { display: grid; grid-template-columns: 72px 1fr 42px; gap: 8px; align-items: center; font-size: 11px; color: #475467; }
+    .bar-track { height: 10px; border-radius: 999px; background: #edf1f7; overflow: hidden; }
+    .bar-fill { height: 100%; border-radius: 999px; background: linear-gradient(90deg, #3f5efb, #12a37f); }
+    .bar-fill.warn { background: linear-gradient(90deg, #f59e0b, #f97316); }
+    .bar-fill.red { background: linear-gradient(90deg, #e34b4b, #fb7185); }
+
+    .flow-line {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 8px;
+      margin: 16px 0 4px;
+    }
+    .flow-step {
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fbfcff;
+      min-height: 90px;
+    }
+    .flow-step b { display: block; font-size: 13px; margin-bottom: 5px; }
+    .flow-step span { color: var(--muted); font-size: 12px; }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .footer {
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+      padding: 28px 0 10px;
+    }
+
+    @media (max-width: 1180px) {
+      .triad-grid { grid-template-columns: 1fr; }
+      .decision-grid, .metric-grid, .cards-grid { grid-template-columns: repeat(2, 1fr); }
+      .meta-grid { grid-template-columns: repeat(2, 1fr); }
+      .flow-line { grid-template-columns: 1fr 1fr; }
+      .hero-top { flex-direction: column; }
+      .version-card { width: 100%; }
+    }
+
+    @media (max-width: 720px) {
+      .doc { width: min(100% - 20px, 1440px); margin-top: 12px; }
+      .hero, .section { border-radius: 20px; padding: 22px; }
+      .meta-grid, .decision-grid, .metric-grid, .cards-grid, .two-col, .flow-line { grid-template-columns: 1fr; }
+      .toc { border-radius: 18px; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .doc { width: 100%; margin: 0; }
+      .toc { display: none; }
+      .hero, .section { box-shadow: none; break-inside: avoid; }
+      .page-break { page-break-before: always; }
+      .triad-grid { grid-template-columns: 1fr 1.05fr 1fr; gap: 12px; }
+      .phone { box-shadow: none; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <div class="doc">
+    <header class="hero" id="top">
+      <div class="hero-top">
+        <div>
+          <div class="eyebrow">PRD · HTML 视觉版 · 复式 PvE 排名赛场</div>
+          <h1>同题竞技：复式德州扑克 PvE 比赛活动</h1>
+          <p class="subtitle">围绕「后台配置 15 手牌局包、用户随机打 10 手、每手复式计分、活动中暂定排名、截止后最终排名、后台逐手逐决策点统计」设计的一份可评审、可落地、可打印的产品需求文档。</p>
+          <div class="badge-row">
+            <span class="badge primary">核心玩法：异步 PvE，同题排名</span>
+            <span class="badge green">每手得分：0-100 Matchpoint 式</span>
+            <span class="badge amber">随机 10/15：需做难度平衡</span>
+            <span class="badge">后台统计：决策点正确率 + 分布</span>
+          </div>
+        </div>
+        <div class="version-card">
+          <div class="line"><span>版本</span><b>v1.0 HTML 评审稿</b></div>
+          <div class="line"><span>日期</span><b>2026-06-24</b></div>
+          <div class="line"><span>适用端</span><b>App / Web / 管理后台</b></div>
+          <div class="line"><span>优先级</span><b>P0 投资人需求专项</b></div>
+          <div class="line"><span>文档定位</span><b>需求 + UI 示意 + 算法口径</b></div>
+        </div>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-item"><span>第一目标</span><strong>让 PvE 也具备公平排名竞争感</strong></div>
+        <div class="meta-item"><span>关键配置</span><strong>牌局包 15 手，用户抽 10 手</strong></div>
+        <div class="meta-item"><span>关键反馈</span><strong>每手完成后立即出复式分</strong></div>
+        <div class="meta-item"><span>关键运营能力</span><strong>逐手、逐决策点统计学习数据</strong></div>
+      </div>
+    </header>
+
+    <nav class="toc" aria-label="目录">
+      <a href="#summary">结论</a>
+      <a href="#principles">原则</a>
+      <a href="#flow1">1 后台配置</a>
+      <a href="#flow2">2 用户参与</a>
+      <a href="#flow3">3 当前排名</a>
+      <a href="#flow4">4 最终排名</a>
+      <a href="#flow5">5 后台统计</a>
+      <a href="#models">数据模型</a>
+      <a href="#api">接口</a>
+      <a href="#edgecases">异常边界</a>
+      <a href="#acceptance">验收</a>
+      <a href="#challenge">审慎挑战</a>
+    </nav>
+
+    <main>
+      <section class="section" id="summary">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Executive Summary</div>
+            <h2>首版建议做「异步 PvE 同题竞技」，不是一开始做完整实时复式赛</h2>
+            <p class="lead">每个用户独立进入 PvE 牌桌，系统从同一个活动牌局包中为用户分配一组可比较的手牌。用户在相同 hand_id 下扮演相同 Hero 位置、面对相同 AI 版本和相同初始条件；每手结束后按同题用户的相对表现给 0-100 复式分，活动截止后冻结最终排名。</p>
+          </div>
+        </div>
+
+        <div class="decision-grid">
+          <div class="decision">
+            <strong>1. 牌局包与活动分离</strong>
+            <p>牌局包是素材库，活动是一次比赛配置。一个 15 手牌局包可以复用于不同活动；活动决定打几手、哪些必选、是否随机、计分和复盘策略。</p>
+          </div>
+          <div class="decision">
+            <strong>2. 用户抽 10 手必须持久化</strong>
+            <p>用户一旦 join，服务端生成并保存 hand_assignment。不能每次进入重新抽，不能依赖客户端随机。</p>
+          </div>
+          <div class="decision">
+            <strong>3. 活动中只给暂定排名</strong>
+            <p>因为后续用户继续参与，分数和排名会变化。前台必须标记「暂定」，并展示样本量、更新时间和活动截止时间。</p>
+          </div>
+          <div class="decision">
+            <strong>4. 后台统计按 hand_id 聚合</strong>
+            <p>虽然用户手牌顺序不同、抽到的组合不同，但计分、统计、复盘都以底层 hand_id 和 decision_node_id 为准。</p>
+          </div>
+        </div>
+
+        <div class="callout warn">
+          <strong>公平性提醒：</strong>「15 手里随机 10 手」会让不同用户面对的题目组合不同。若活动有全局主榜，必须做难度/标签平衡、每手归一化计分、最小样本量校验。更稳的 MVP 是「所有人同 10 手，只随机顺序」；如果投资人明确希望随机抽手，则建议配置 6-8 手必选 + 2-4 手按标签分层随机。
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric"><div class="number">15</div><div class="label">活动候选手牌数 hand_pack_total</div></div>
+          <div class="metric"><div class="number">10</div><div class="label">用户实际完成手数 play_hand_count</div></div>
+          <div class="metric"><div class="number">0-100</div><div class="label">每手复式得分区间 hand_score</div></div>
+          <div class="metric"><div class="number">T+0</div><div class="label">单手结束即展示参考/暂定分</div></div>
+        </div>
+      </section>
+
+      <section class="section" id="principles">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Product Principles</div>
+            <h2>术语、角色与不可妥协的产品原则</h2>
+            <p class="lead">这个功能同时是活动系统、PvE 对局系统、计分系统、教学数据系统。为了避免后续实现分裂，先统一核心概念。</p>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <h3>关键术语</h3>
+            <table>
+              <thead><tr><th>术语</th><th>定义</th></tr></thead>
+              <tbody>
+                <tr><td>复式 PvE 活动</td><td>用户独立与 AI 对局，但在相同或等价手牌上和其他用户排名比较。</td></tr>
+                <tr><td>牌局包 Hand Pack</td><td>活动候选手牌集合，例如 15 手，包含牌序、Hero 位置、AI 座位、盲注、栈深、标签等。</td></tr>
+                <tr><td>必选手 Required Hand</td><td>每个参赛用户都必须打的手牌，用于保证活动核心考点一致。</td></tr>
+                <tr><td>可选池 Optional Pool</td><td>除必选手外，用户按规则随机抽取的手牌集合。</td></tr>
+                <tr><td>展示顺序 Display Order</td><td>用户实际看到并游玩的顺序。可随机，但不影响按 hand_id 计分。</td></tr>
+                <tr><td>Raw Result</td><td>本手净收益，建议单位 BB：<code>ending_stack - starting_stack</code>。</td></tr>
+                <tr><td>复式得分 Hand Score</td><td>将本手 Raw Result 与同 hand_id 的其他有效用户横向比较后的 0-100 分。</td></tr>
+                <tr><td>Decision Node</td><td>一次 Hero 决策点的规范化节点，用于统计正确率、动作分布、EV loss。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3>不可妥协原则</h3>
+            <div class="cards-grid" style="grid-template-columns: 1fr 1fr;">
+              <div class="mini-card"><strong>服务端权威</strong><p>发牌、隐藏牌、AI 动作、合法动作、结算与计分都以服务端为准。</p></div>
+              <div class="mini-card"><strong>每手独立重置</strong><p>每手从固定栈深开始，避免上一手输赢影响下一手策略空间。</p></div>
+              <div class="mini-card"><strong>先存分配再开局</strong><p>用户 join 时生成 hand_assignment，并持久化到 attempt，后续恢复不重新抽。</p></div>
+              <div class="mini-card"><strong>活动中防泄题</strong><p>不展示未来公共牌、AI 未亮手牌、其他用户完整打法和高手线。</p></div>
+              <div class="mini-card"><strong>暂定与最终分离</strong><p>活动期间排行榜是 current/provisional；截止结算后生成 final snapshot。</p></div>
+              <div class="mini-card"><strong>统计可追溯</strong><p>每个排名、每手得分、每个正确率都能回溯到 action_event 和 score_snapshot。</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-break" id="flow1">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Flow 1 · Admin Configuration</div>
+            <h2>管理后台：复式比赛牌局包与活动配置</h2>
+            <p class="lead">运营/教练在后台创建活动，选择一个 15 手牌局包，配置用户实际打 10 手、必选手、随机策略、计分模式、复盘开放策略和活动时间。后台发布前必须完成合法性、公平性、样本量和 AI 版本校验。</p>
+          </div>
+        </div>
+
+        <div class="triad-grid">
+          <div class="triad-col">
+            <div class="col-title">左侧：需求描述 <small>FR / AC / Edge</small></div>
+            <div class="col-body">
+              <h3>目标用户</h3>
+              <ul>
+                <li>运营：快速创建每日/每周复式挑战。</li>
+                <li>教练：配置特定主题手牌，例如 3bet pot、河牌 bluff catch、转牌压力。</li>
+                <li>管理员：审核活动公平性、发布、暂停、结算、导出数据。</li>
+              </ul>
+
+              <h3>核心需求</h3>
+              <ol>
+                <li>后台可创建 <strong>Hand Pack</strong>，例如总计 15 手。</li>
+                <li>后台可创建 <strong>Activity</strong>，配置每个用户实际打 <strong>10 手</strong>。</li>
+                <li>支持设置 <strong>必选手</strong>，例如 H01、H04、H09、H12。必选手所有用户都会打。</li>
+                <li>其余手牌从 optional pool 按策略抽取，支持纯随机和按标签/难度分层随机。</li>
+                <li>支持每个用户展示顺序随机打乱，降低泄题价值。</li>
+                <li>支持配置活动时间、可见范围、奖励、计分模式、复盘开放策略、排行榜可见策略。</li>
+                <li>发布前后台展示校验结果：手牌合法性、AI 版本锁定、baseline 是否生成、预计每手样本量是否达标。</li>
+              </ol>
+
+              <h3>后台字段</h3>
+              <table>
+                <thead><tr><th>字段</th><th>说明</th><th>建议</th></tr></thead>
+                <tbody>
+                  <tr><td>hand_pack_id</td><td>选择牌局包</td><td>必填</td></tr>
+                  <tr><td>pack_total_hands</td><td>候选手牌数</td><td>15</td></tr>
+                  <tr><td>play_hand_count</td><td>用户实际打几手</td><td>10</td></tr>
+                  <tr><td>required_hand_ids</td><td>所有用户必打</td><td>建议 6-8 手</td></tr>
+                  <tr><td>sampling_policy</td><td>抽样策略</td><td>stratified_by_tag 优先</td></tr>
+                  <tr><td>shuffle_policy</td><td>顺序策略</td><td>per_user_shuffle</td></tr>
+                  <tr><td>scoring_mode</td><td>计分模式</td><td>matchpoint_v1</td></tr>
+                  <tr><td>reveal_policy</td><td>复盘揭示策略</td><td>competitive</td></tr>
+                </tbody>
+              </table>
+
+              <h3>验收标准</h3>
+              <ul>
+                <li>当必选手数量大于 10 时，后台禁止发布。</li>
+                <li>当牌局包不足 10 手时，后台禁止发布。</li>
+                <li>当任一 optional hand 预计样本量低于阈值，后台给出强警告。</li>
+                <li>活动发布后，AI 策略版本、牌局包版本、计分模式不可直接修改；只能复制活动重新发布。</li>
+                <li>每次发布、暂停、取消、结算均写入 admin_audit_log。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="triad-col">
+            <div class="col-title">中间：UI 示意 <small>后台创建页</small></div>
+            <div class="col-body">
+              <div class="mock-shell">
+                <div class="mock-topbar">
+                  <div class="mock-dots"><span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span></div>
+                  <strong>Admin Console · 复式活动配置</strong>
+                  <span>保存草稿</span>
+                </div>
+                <div class="mock-content">
+                  <div class="mock-card">
+                    <h5>基础信息</h5>
+                    <div class="mock-row"><span>活动名称</span><span class="mock-input">周赛第 03 期</span></div>
+                    <div class="mock-row"><span>活动时间</span><span class="mock-input">6/25 10:00 - 6/28 22:00</span></div>
+                    <div class="mock-row"><span>可见范围</span><span class="mock-input">全部用户</span></div>
+                    <div class="mock-row"><span>榜单策略</span><span class="mock-input">活动中暂定 / 截止后最终</span></div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>牌局包配置</h5>
+                    <div class="mock-row"><span>选择牌局包</span><span class="mock-input">HP-2026-W26-A · 15 手</span></div>
+                    <div class="mock-row"><span>每人实际打</span><span class="mock-input">10 手</span></div>
+                    <div class="mock-row"><span>抽样策略</span><span class="mock-input">按标签分层随机</span></div>
+                    <div class="mock-row"><span>展示顺序</span><span class="mock-input">每用户打乱</span></div>
+                    <div style="margin-top:10px; font-size:12px; color:#667085; font-weight:800;">必选手</div>
+                    <div class="chips" style="margin-top:7px;">
+                      <span class="chip must">H01 3bet pot</span>
+                      <span class="chip must">H04 turn probe</span>
+                      <span class="chip must">H09 river call</span>
+                      <span class="chip must">H12 squeeze</span>
+                    </div>
+                    <div style="margin-top:10px; font-size:12px; color:#667085; font-weight:800;">可选池</div>
+                    <div class="chips" style="margin-top:7px;">
+                      <span class="chip">H02</span><span class="chip">H03</span><span class="chip">H05</span><span class="chip">H06</span><span class="chip">H07</span><span class="chip">H08</span><span class="chip">H10</span><span class="chip">H11</span><span class="chip">H13</span><span class="chip">H14</span><span class="chip">H15</span>
+                    </div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>发布前校验</h5>
+                    <div class="mock-row"><span>牌面合法性 / 无重复牌</span><span class="chip ok">通过</span></div>
+                    <div class="mock-row"><span>AI Policy Version</span><span class="chip ok">locked: ai-nlhe-v3.2.1</span></div>
+                    <div class="mock-row"><span>Baseline Cohort</span><span class="chip ok">15/15 已生成</span></div>
+                    <div class="mock-row"><span>Optional Hand 预计样本</span><span class="chip bad">H15 预计 22 &lt; 30</span></div>
+                    <div class="mock-row"><span>公平性建议</span><span class="chip must">提高必选手或预计参与人数</span></div>
+                  </div>
+
+                  <div class="mock-card" style="display:flex; gap:10px; align-items:center; justify-content:flex-end;">
+                    <span class="secondary-btn" style="width:96px; margin:0;">预览用户流</span>
+                    <span class="primary-btn" style="width:96px; margin:0;">发布活动</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triad-col formula">
+            <div class="col-title">右侧：数据 / 算法 / 公式 <small>配置落库与抽样</small></div>
+            <div class="col-body">
+              <h3>核心配置模型</h3>
+              <pre>{
+  "activity_id": "act_w26_03",
+  "hand_pack_id": "hp_2026_w26_a",
+  "pack_total_hands": 15,
+  "play_hand_count": 10,
+  "required_hand_ids": ["H01", "H04", "H09", "H12"],
+  "sampling_policy": "stratified_by_tag",
+  "shuffle_policy": "per_user_shuffle",
+  "scoring_mode": "matchpoint_v1",
+  "min_human_cohort": 30,
+  "ai_policy_version": "ai-nlhe-v3.2.1",
+  "reveal_policy": "competitive"
+}</pre>
+
+              <h3>发布前硬校验</h3>
+              <pre>assert pack_total_hands &gt;= play_hand_count
+assert len(required_hand_ids) &lt;= play_hand_count
+assert required_hand_ids subset of hand_pack
+assert all(hand.ai_policy_version == activity.ai_policy_version)
+assert baseline_exists(hand_id) for every hand in hand_pack
+assert no_duplicate_cards(hand.deck_order)
+assert scoring_mode in allowed_modes</pre>
+
+              <h3>用户抽牌算法</h3>
+              <pre>required = required_hand_ids
+optional_pool = all_pack_hands - required
+need = play_hand_count - len(required)
+
+seed_select = sha256(activity_id + user_id + attempt_id + salt + "select")
+selected_optional = sample(optional_pool, need, seed_select, sampling_policy)
+
+seed_order = sha256(activity_id + user_id + attempt_id + salt + "order")
+assigned_hands = shuffle(required + selected_optional, seed_order)
+
+persist AttemptHandAssignment(
+  attempt_id,
+  hand_id,
+  source = "required" | "optional",
+  display_order,
+  assignment_version
+)</pre>
+
+              <h3>可选手预计样本量</h3>
+              <pre>M = pack_total_hands - required_count
+k = play_hand_count - required_count
+P(optional hand selected) = k / M
+expected_cohort_h = expected_participants * P(selected)
+
+若 expected_cohort_h &lt; min_human_cohort：
+  后台提示「该手样本不足，统计和计分波动较大」</pre>
+
+              <div class="callout warn">
+                <strong>关键实现点：</strong>随机不是为了让服务端每次进入都变，而是 join 时一次性分配、持久化、可审计。后续离开、刷新、换设备，都读取同一份 assignment。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-break" id="flow2">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Flow 2 · User Participation</div>
+            <h2>用户参与：从 15 手中随机 10 手，并打乱顺序完成 PvE 对局</h2>
+            <p class="lead">用户看到的是一个 10 手挑战，而不是后台完整 15 手牌局包。用户首次参与时，服务端为其分配 10 个 hand_id，并生成随机展示顺序。用户每完成一手，即进入本手结果页，获得净收益和复式得分。</p>
+          </div>
+        </div>
+
+        <div class="triad-grid">
+          <div class="triad-col">
+            <div class="col-title">左侧：需求描述 <small>用户路径</small></div>
+            <div class="col-body">
+              <h3>入口与说明</h3>
+              <ul>
+                <li>首页 / 活动页展示「今日同题挑战」卡片。</li>
+                <li>卡片展示：活动名、10 手、预计时长、截止时间、当前参与人数、奖励或徽章。</li>
+                <li>首次进入说明页：本活动是同题 PvE，系统会和其他玩家比较同一手的结果。</li>
+                <li>说明页不应展示「牌局包共 15 手」等可能影响用户预期的后台细节；可展示「本次挑战共 10 手」。</li>
+              </ul>
+
+              <h3>开始挑战</h3>
+              <ol>
+                <li>用户点击开始。</li>
+                <li>服务端创建或返回唯一有效 <code>ParticipantAttempt</code>。</li>
+                <li>服务端生成并保存 <code>AttemptHandAssignment</code>：10 个 hand_id + display_order。</li>
+                <li>客户端拉取第 1 个 display_order 对应的可见牌局状态。</li>
+                <li>用户与 AI 完成该手。</li>
+              </ol>
+
+              <h3>对局中展示</h3>
+              <ul>
+                <li>顶部展示第 X/10 手、活动截止时间、当前暂定分。</li>
+                <li>牌桌展示当前合法可见信息，不下发未来公共牌和 AI 隐藏手牌。</li>
+                <li>用户动作提交时带 <code>request_id</code>，服务端校验幂等。</li>
+                <li>任意时刻可以离开；回来时恢复到最后一个服务端确认状态。</li>
+              </ul>
+
+              <h3>单手结束页</h3>
+              <ul>
+                <li>必须展示本手净收益 Raw Result。</li>
+                <li>必须展示本手复式得分，样本不足时展示参考基线分。</li>
+                <li>必须展示「参考 / 暂定 / 最终」状态标签。</li>
+                <li>提供「下一手」「复盘本手」「暂时离开」三个动作。</li>
+              </ul>
+
+              <h3>验收标准</h3>
+              <ul>
+                <li>同一用户重复点击开始，不产生多个有效 attempt。</li>
+                <li>用户刷新页面后，10 手 assignment 不变。</li>
+                <li>完成一手后 2 秒内展示得分。</li>
+                <li>当前活动未截止时，完整隐藏牌和高手打法不开放。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="triad-col">
+            <div class="col-title">中间：UI 示意 <small>移动端活动与牌桌</small></div>
+            <div class="col-body phone-wrap">
+              <div class="phone">
+                <div class="phone-screen">
+                  <div class="phone-status"><span>9:41</span><span>5G 86%</span></div>
+                  <div class="app-header">
+                    <small>今日同题挑战</small>
+                    <div class="app-title">10 手牌技排名赛</div>
+                    <small>截止 6/28 22:00 · 已有 1,248 人参与</small>
+                  </div>
+                  <div class="app-body">
+                    <div class="mobile-card">
+                      <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong>挑战进度</strong><span class="chip ok">进行中</span>
+                      </div>
+                      <div class="progressbar"><span style="width:40%;"></span></div>
+                      <div style="display:flex; justify-content:space-between; color:#667085;"><span>第 4/10 手</span><span>暂定总分 71.8</span></div>
+                    </div>
+
+                    <div class="mobile-card">
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <strong>第 4 手 · Flop</strong><span class="chip gray">轮到你</span>
+                      </div>
+                      <div class="table-felt">
+                        <div class="seat s1">AI UTG</div>
+                        <div class="seat s2">AI CO</div>
+                        <div class="seat s3">AI BTN</div>
+                        <div class="seat hero">Hero BB</div>
+                        <div class="seat s5">AI SB</div>
+                        <div class="seat s6">AI MP</div>
+                        <div class="pot">
+                          <div>Pot 18.5BB</div>
+                          <div class="board"><span class="card red">A♥</span><span class="card">7♣</span><span class="card">2♠</span></div>
+                        </div>
+                      </div>
+                      <div class="action-row">
+                        <div class="action-btn">Check</div>
+                        <div class="action-btn primary">Bet 6BB</div>
+                        <div class="action-btn">Bet 12BB</div>
+                      </div>
+                    </div>
+
+                    <div class="mobile-card">
+                      <div style="display:flex; justify-content:space-between; align-items:center;"><strong>本手结果</strong><span class="chip must">暂定</span></div>
+                      <div style="font-size:30px; font-weight:950; margin:8px 0 0; color:#3f5efb;">82.0</div>
+                      <div style="color:#667085;">复式得分 / 100 · 净收益 +18.5BB</div>
+                      <div class="progressbar"><span style="width:82%;"></span></div>
+                      <div style="color:#667085;">暂时超过 79% 已完成玩家</div>
+                      <div class="primary-btn">下一手</div>
+                      <div class="secondary-btn">先看本手复盘</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triad-col formula">
+            <div class="col-title">右侧：数据 / 算法 / 公式 <small>参与状态与计分</small></div>
+            <div class="col-body">
+              <h3>参赛状态机</h3>
+              <pre>not_joined
+  - join -&gt; registered
+registered
+  - assignment_created -&gt; in_progress
+in_progress
+  - complete all 10 hands -&gt; completed_pending_final
+  - end_time reached with incomplete hands -&gt; expired_incomplete
+completed_pending_final
+  - settlement done -&gt; finalized
+  - fraud review failed -&gt; disqualified</pre>
+
+              <h3>单手状态机</h3>
+              <pre>assigned
+  - load visible state -&gt; in_progress
+in_progress
+  - hero action submitted -&gt; action_committed
+  - hand finished -&gt; result_pending
+result_pending
+  - score calculated -&gt; scored
+scored
+  - reveal allowed -&gt; reviewable</pre>
+
+              <h3>Raw Result</h3>
+              <pre>raw_delta_bb = (hero_ending_stack - hero_starting_stack) / big_blind
+
+规则：
+- 每手 hero_starting_stack 固定，例如 100BB
+- 每手结束后下一手重新回到 100BB
+- all-in、边池、平分底池按标准德扑结算
+- raw_delta_bb 只代表本手结果，不带入下一手</pre>
+
+              <h3>每手复式得分：Matchpoint v1</h3>
+              <pre>C = 同 activity_id + hand_id + hero_slot 的有效完成集合
+
+wins_i = count(raw_i &gt; raw_j, j in C, j != i)
+ties_i = count(raw_i == raw_j, j in C, j != i)
+hand_score_i = 100 * (wins_i + 0.5 * ties_i) / (|C| - 1)
+
+样本不足：
+if human_cohort_size &lt; min_human_cohort:
+  score_type = baseline_reference
+else:
+  score_type = human_provisional</pre>
+
+              <h3>前台展示规则</h3>
+              <table>
+                <thead><tr><th>状态</th><th>展示</th></tr></thead>
+                <tbody>
+                  <tr><td>样本不足</td><td>复式得分 76.5（参考基线）</td></tr>
+                  <tr><td>活动进行中</td><td>复式得分 82.0（暂定）</td></tr>
+                  <tr><td>活动已结算</td><td>复式得分 81.4（最终）</td></tr>
+                </tbody>
+              </table>
+
+              <div class="callout good">
+                <strong>用户解释：</strong>“同样这手牌，你比其他玩家赢得更多 / 亏得更少，因此本手得分更高。”不要在结果页直接展示复杂公式。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-break" id="flow3">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Flow 3 · Provisional Ranking</div>
+            <h2>用户打完后：查看当下排名，但明确不是最终排名</h2>
+            <p class="lead">用户完成 10 手后进入「完成页 + 当前排名页」。由于活动尚未截止，后续还会有用户完成，且每手相对分可能随 cohort 扩大而变化，所以必须把此处定义为 current/provisional leaderboard。</p>
+          </div>
+        </div>
+
+        <div class="triad-grid">
+          <div class="triad-col">
+            <div class="col-title">左侧：需求描述 <small>完成后体验</small></div>
+            <div class="col-body">
+              <h3>进入条件</h3>
+              <ul>
+                <li>用户完成本次活动分配的全部 10 手。</li>
+                <li><code>ParticipantAttempt.status = completed_pending_final</code>。</li>
+                <li>所有 10 个 <code>HandAttempt</code> 都已有 score_snapshot。</li>
+              </ul>
+
+              <h3>页面目标</h3>
+              <ol>
+                <li>让用户立即获得完成感。</li>
+                <li>告诉用户当前大概处于什么位置。</li>
+                <li>清楚解释为什么不是最终排名。</li>
+                <li>引导用户分享、复盘、等待最终结算或参与下一场。</li>
+              </ol>
+
+              <h3>展示内容</h3>
+              <ul>
+                <li>当前总分：例如 78.6，标记「暂定」。</li>
+                <li>当前排名：例如 126 / 1,248，标记「当前完成榜」。</li>
+                <li>当前超过百分比：例如超过 89% 已完成玩家。</li>
+                <li>每手分解：10 手的得分、净收益、样本量、是否参考基线。</li>
+                <li>分数说明：活动截止前，排名和暂定分可能变化。</li>
+                <li>榜单更新时间：例如 14:32:10。</li>
+              </ul>
+
+              <h3>榜单范围</h3>
+              <table>
+                <thead><tr><th>榜单</th><th>参与对象</th><th>用途</th></tr></thead>
+                <tbody>
+                  <tr><td>当前完成榜</td><td>已完成 10 手的用户</td><td>用户完成后的即时反馈</td></tr>
+                  <tr><td>好友榜</td><td>好友中已完成用户</td><td>社交竞争</td></tr>
+                  <tr><td>进行中榜</td><td>未完成用户</td><td>可选，不建议并入主排名</td></tr>
+                  <tr><td>最终榜</td><td>截止前完成且未违规用户</td><td>活动结算后冻结</td></tr>
+                </tbody>
+              </table>
+
+              <h3>验收标准</h3>
+              <ul>
+                <li>当前排名页必须有「暂定」标签，不能使用「最终」文案。</li>
+                <li>展示参与样本量、榜单更新时间、距离截止时间。</li>
+                <li>若当前使用 baseline_reference 分，排名页必须提示“最终结算会按真人样本重算”。</li>
+                <li>分享卡在活动中不得包含具体牌面和隐藏信息。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="triad-col">
+            <div class="col-title">中间：UI 示意 <small>当前排名页</small></div>
+            <div class="col-body">
+              <div class="mock-shell">
+                <div class="mock-topbar">
+                  <div class="mock-dots"><span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span></div>
+                  <strong>Current Leaderboard</strong>
+                  <span>14:32 更新</span>
+                </div>
+                <div class="mock-content">
+                  <div class="mock-card" style="background:linear-gradient(135deg,#172033,#3f5efb); color:#fff; border:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <div style="font-size:12px; opacity:.78;">你已完成 10/10 手</div>
+                        <div style="font-size:38px; font-weight:950; letter-spacing:-.05em;">78.6</div>
+                        <div style="font-size:13px; opacity:.85;">当前总分 · 暂定</div>
+                      </div>
+                      <div style="text-align:right;">
+                        <span class="chip must">非最终排名</span>
+                        <div style="font-size:26px; font-weight:950; margin-top:14px;">#126</div>
+                        <div style="font-size:12px; opacity:.8;">/ 1,248 已完成</div>
+                      </div>
+                    </div>
+                    <div style="height:1px; background:rgba(255,255,255,.18); margin:14px 0;"></div>
+                    <div style="font-size:12px; opacity:.86;">活动截止 6/28 22:00。截止前会有更多用户完成，当前分数和排名可能变化。</div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>我的 10 手分解</h5>
+                    <div class="mock-row"><span>H04 · turn probe</span><strong>92.0</strong><span class="chip ok">真人样本 836</span></div>
+                    <div class="mock-row"><span>H12 · squeeze</span><strong>84.5</strong><span class="chip ok">真人样本 824</span></div>
+                    <div class="mock-row"><span>H01 · 3bet pot</span><strong>78.0</strong><span class="chip ok">真人样本 852</span></div>
+                    <div class="mock-row"><span>H15 · river jam</span><strong>66.5</strong><span class="chip must">参考基线</span></div>
+                    <div class="mock-row"><span>H09 · bluff catch</span><strong>41.0</strong><span class="chip ok">真人样本 811</span></div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>当前完成榜</h5>
+                    <div class="leader-row"><span class="rank-pill">1</span><span><span class="avatar"></span>RiverCat</span><span class="score">91.2</span></div>
+                    <div class="leader-row"><span class="rank-pill">2</span><span><span class="avatar"></span>SolverKid</span><span class="score">90.6</span></div>
+                    <div class="leader-row"><span class="rank-pill">3</span><span><span class="avatar"></span>BTN_Pro</span><span class="score">89.7</span></div>
+                    <div class="leader-row" style="background:#f8fbff; border-radius:12px; padding-left:8px; padding-right:8px;"><span class="rank-pill">126</span><span><span class="avatar"></span>你</span><span class="score">78.6</span></div>
+                  </div>
+
+                  <div class="mock-card" style="display:flex; gap:10px; justify-content:flex-end;">
+                    <span class="secondary-btn" style="width:96px; margin:0;">查看复盘</span>
+                    <span class="primary-btn" style="width:96px; margin:0;">生成分享卡</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triad-col formula">
+            <div class="col-title">右侧：数据 / 算法 / 公式 <small>暂定排名</small></div>
+            <div class="col-body">
+              <h3>活动总分</h3>
+              <pre>assigned_hands_i = 用户 i 被分配的 10 个 hand_id
+
+hand_score_i,h = score(activity_id, hand_id=h, attempt=i)
+weight_h = activity_hand_weight[h] // MVP 默认 1
+
+event_score_i = round(
+  sum(weight_h * hand_score_i,h) / sum(weight_h),
+  2
+)</pre>
+
+              <h3>当前完成榜入榜条件</h3>
+              <pre>attempt.status == completed_pending_final
+AND completed_hand_count == play_hand_count
+AND completed_at &lt;= activity.end_time
+AND fraud_status in [normal, pending_review]
+
+排序：
+1. event_score desc
+2. raw_delta_total_bb desc
+3. total_ev_loss_bb asc
+4. completed_at asc // 仅作为低优先级 tie-breaker</pre>
+
+              <h3>为什么排名会变</h3>
+              <pre>活动未截止时：
+- 新用户完成同一 hand_id 后，会进入该手比较集合 C
+- hand_score 是相对分，C 变化会导致 hand_score 轻微变化
+- 用户自己的 event_score 也可能随每手 score 变化
+- 因此 current_rank 不是最终排名</pre>
+
+              <h3>ScoreSnapshot 字段</h3>
+              <pre>{
+  "attempt_id": "att_123",
+  "hand_id": "H04",
+  "raw_delta_bb": 18.5,
+  "hand_score": 82.0,
+  "score_type": "human_provisional",
+  "cohort_size": 836,
+  "formula_version": "matchpoint_v1",
+  "calculated_at": "2026-06-24T14:32:10+08:00"
+}</pre>
+
+              <div class="callout warn">
+                <strong>文案红线：</strong>活动未截止前，不允许出现“最终排名”“已锁定”“保证第 X 名”等措辞。统一使用“当前排名”“暂定分”“活动截止后最终结算”。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-break" id="flow4">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Flow 4 · Final Ranking</div>
+            <h2>比赛时间到了：最终排名结算、冻结与通知</h2>
+            <p class="lead">活动到达 end_time 后，系统停止继续参赛和继续未完成手牌，进入 scoring/settlement 阶段。结算任务重新计算每个 hand_id 的最终 cohort、每手最终分、活动总分和最终榜单，并生成不可变的 final leaderboard snapshot。</p>
+          </div>
+        </div>
+
+        <div class="triad-grid">
+          <div class="triad-col">
+            <div class="col-title">左侧：需求描述 <small>结算规则</small></div>
+            <div class="col-body">
+              <h3>截止行为</h3>
+              <ul>
+                <li>到达活动截止时间后，未 join 用户不能再参与。</li>
+                <li>已 join 但未完成 10 手的用户，不能继续未完成手牌。</li>
+                <li>已完成 10 手且 completed_at ≤ end_time 的用户进入最终结算候选。</li>
+                <li>可疑用户进入 pending_review；后台可在结算前确认是否剔除。</li>
+              </ul>
+
+              <h3>最终结算</h3>
+              <ol>
+                <li>活动状态从 <code>running</code> 变为 <code>scoring</code>。</li>
+                <li>锁定有效参赛用户集合。</li>
+                <li>按 hand_id 重算所有最终 hand_score。</li>
+                <li>按每个用户的 assigned_hands 聚合最终 event_score。</li>
+                <li>按 tie-breaker 排序，生成 final leaderboard snapshot。</li>
+                <li>活动状态变为 <code>finalized</code>。</li>
+                <li>开放最终榜单、结算通知、完整复盘和后台统计最终口径。</li>
+              </ol>
+
+              <h3>最终榜单展示</h3>
+              <ul>
+                <li>最终排名、最终总分、超过百分比。</li>
+                <li>每手最终分解：hand_id、展示序号、raw_delta、hand_score、cohort_size。</li>
+                <li>奖励 / 徽章 / 学习权益。</li>
+                <li>完整复盘入口：活动结束后才展示隐藏牌和高分打法。</li>
+              </ul>
+
+              <h3>验收标准</h3>
+              <ul>
+                <li>最终结算任务可重复执行，但结果幂等。</li>
+                <li>final snapshot 生成后不可被普通后台编辑覆盖。</li>
+                <li>任一用户最终排名可追溯到 10 个 hand_score 和原始 action_event。</li>
+                <li>结算失败时活动状态为 scoring_failed，后台可重试。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="triad-col">
+            <div class="col-title">中间：UI 示意 <small>最终排名页</small></div>
+            <div class="col-body">
+              <div class="mock-shell">
+                <div class="mock-topbar">
+                  <div class="mock-dots"><span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span></div>
+                  <strong>Final Leaderboard</strong>
+                  <span>已结算</span>
+                </div>
+                <div class="mock-content">
+                  <div class="mock-card" style="background:linear-gradient(135deg,#101828,#12a37f); color:#fff; border:0;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+                      <div>
+                        <span class="chip ok">最终排名已冻结</span>
+                        <div style="font-size:52px; font-weight:950; letter-spacing:-.06em; margin-top:8px;">#118</div>
+                        <div style="opacity:.82;">共 1,532 名有效完成用户</div>
+                      </div>
+                      <div style="text-align:right;">
+                        <div style="font-size:13px; opacity:.82;">最终总分</div>
+                        <div style="font-size:42px; font-weight:950;">79.4</div>
+                        <div style="opacity:.82;">超过 92% 玩家</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>奖励与后续学习</h5>
+                    <div class="mock-row"><span>获得徽章</span><span class="chip ok">Top 10% · 同题高手</span></div>
+                    <div class="mock-row"><span>最佳一手</span><strong>H04 · 96.5 分</strong></div>
+                    <div class="mock-row"><span>最需复盘</span><strong>H09 · 41.0 分</strong></div>
+                    <div class="mock-row"><span>推荐 Drill</span><span class="chip">River Bluff Catch</span></div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>最终榜单 Top 3</h5>
+                    <div class="leader-row"><span class="rank-pill">1</span><span><span class="avatar"></span>RiverCat</span><span class="score">92.8</span></div>
+                    <div class="leader-row"><span class="rank-pill">2</span><span><span class="avatar"></span>SolverKid</span><span class="score">91.9</span></div>
+                    <div class="leader-row"><span class="rank-pill">3</span><span><span class="avatar"></span>BTN_Pro</span><span class="score">91.1</span></div>
+                    <div class="leader-row" style="background:#edfdf6; border-radius:12px; padding-left:8px; padding-right:8px;"><span class="rank-pill">118</span><span><span class="avatar"></span>你</span><span class="score">79.4</span></div>
+                  </div>
+
+                  <div class="mock-card" style="display:flex; gap:10px; justify-content:flex-end;">
+                    <span class="secondary-btn" style="width:108px; margin:0;">完整复盘</span>
+                    <span class="primary-btn" style="width:108px; margin:0;">分享成绩</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triad-col formula">
+            <div class="col-title">右侧：数据 / 算法 / 公式 <small>最终结算</small></div>
+            <div class="col-body">
+              <h3>结算任务</h3>
+              <pre>on activity.end_time:
+  update activity.status = "scoring"
+  eligible_attempts = attempts where:
+    status == completed_pending_final
+    completed_at &lt;= end_time
+    fraud_status != disqualified
+
+  for each hand_id in hand_pack:
+    cohort = hand_attempts where:
+      hand_id == current hand
+      attempt_id in eligible_attempts
+      hand_status == scored
+    recalculate final hand_score for cohort
+
+  for each attempt in eligible_attempts:
+    event_score = weighted_avg(final hand_score of assigned_hands)
+
+  rows = sort_by(event_score desc, tie_breakers)
+  create LeaderboardSnapshot(status="final")
+  update activity.status = "finalized"</pre>
+
+              <h3>Tie-breaker</h3>
+              <pre>1. event_score desc
+2. final_raw_delta_total_bb desc
+3. total_ev_loss_bb asc
+4. best_hand_score desc
+5. completed_at asc</pre>
+
+              <h3>最终榜单快照</h3>
+              <pre>{
+  "leaderboard_snapshot_id": "lbs_final_001",
+  "activity_id": "act_w26_03",
+  "status": "final",
+  "formula_version": "matchpoint_v1",
+  "eligible_attempt_count": 1532,
+  "generated_at": "2026-06-28T22:05:12+08:00",
+  "checksum": "sha256:...",
+  "rows_ref": "s3://.../leaderboard_final.json"
+}</pre>
+
+              <h3>复盘开放策略</h3>
+              <table>
+                <thead><tr><th>活动状态</th><th>复盘可见内容</th></tr></thead>
+                <tbody>
+                  <tr><td>running</td><td>只看自己的已知信息、已发生行动、本手基础反馈</td></tr>
+                  <tr><td>scoring</td><td>榜单结算中，暂不开放隐藏信息</td></tr>
+                  <tr><td>finalized</td><td>完整牌谱、AI 手牌、高分玩家常见线、GTO/AI 讲解</td></tr>
+                </tbody>
+              </table>
+
+              <div class="callout good">
+                <strong>关键体验：</strong>最终榜单不是实时查询结果，而是一个冻结快照。这样能避免用户反复刷新看到排名跳动，也便于后续申诉和审计。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section page-break" id="flow5">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Flow 5 · Admin Hand Analytics</div>
+            <h2>管理后台：查看每一手牌的统计信息与决策点分析</h2>
+            <p class="lead">后台不仅要看排行榜，还要把每一手变成教学资产：每个 hand_id 的选择人数、完成人数、平均分、分布、关键决策点正确率、动作分布、EV loss、不同水平用户的打法差异都要能看。</p>
+          </div>
+        </div>
+
+        <div class="triad-grid">
+          <div class="triad-col">
+            <div class="col-title">左侧：需求描述 <small>统计维度</small></div>
+            <div class="col-body">
+              <h3>页面目标</h3>
+              <ul>
+                <li>运营判断活动质量：哪些手牌过难、过易、流失高、争议大。</li>
+                <li>教练沉淀内容：哪些决策点错误率高，适合做讲解或 Drill。</li>
+                <li>研发排查问题：AI 行为、结算、计分、复盘是否异常。</li>
+                <li>增长/产品分析：用户在哪里离开，哪些反馈驱动继续下一手。</li>
+              </ul>
+
+              <h3>每手概览指标</h3>
+              <table>
+                <thead><tr><th>指标</th><th>含义</th></tr></thead>
+                <tbody>
+                  <tr><td>assigned_count</td><td>被分配到该 hand_id 的用户数。必选手应接近参与人数。</td></tr>
+                  <tr><td>started_count</td><td>实际开始该手的用户数。</td></tr>
+                  <tr><td>completed_count</td><td>完成该手并有结算结果的用户数。</td></tr>
+                  <tr><td>completion_rate</td><td>completed_count / started_count。</td></tr>
+                  <tr><td>avg_hand_score</td><td>该手平均复式分，理论上接近 50，但抽样和过滤会有波动。</td></tr>
+                  <tr><td>raw_delta_distribution</td><td>本手净收益分布，用于识别极端 cooler 或异常结算。</td></tr>
+                  <tr><td>avg_ev_loss</td><td>用户在该手所有 Hero 决策点的平均 EV 损失。</td></tr>
+                </tbody>
+              </table>
+
+              <h3>决策点统计</h3>
+              <ul>
+                <li>按 <code>decision_node_id</code> 展示：街道、轮次、底池、Hero 位置、关键牌面、样本数。</li>
+                <li>正确率：基于 GTO/解算器/教练规则，按 EV loss 阈值判断。</li>
+                <li>动作分布：fold/check/call/bet/raise/all-in。</li>
+                <li>下注尺度分布：小注、中注、大注、超池、all-in。</li>
+                <li>分群对比：Top 10%、Bottom 30%、新手、老手、不同 VPIP/PFR 用户。</li>
+              </ul>
+
+              <h3>样本保护</h3>
+              <ul>
+                <li>节点样本数 n &lt; 30 时，默认不展示百分比或标记低可信。</li>
+                <li>活动进行中，后台可看统计，但用户侧不开放会泄题的聚合分布。</li>
+                <li>支持导出 CSV/JSON 供教练制作课件。</li>
+              </ul>
+            </div>
+          </div>
+
+          <div class="triad-col">
+            <div class="col-title">中间：UI 示意 <small>后台统计页</small></div>
+            <div class="col-body">
+              <div class="mock-shell">
+                <div class="mock-topbar">
+                  <div class="mock-dots"><span class="mock-dot"></span><span class="mock-dot"></span><span class="mock-dot"></span></div>
+                  <strong>Admin · Hand Analytics</strong>
+                  <span>活动已结算</span>
+                </div>
+                <div class="mock-content">
+                  <div class="mock-card">
+                    <h5>筛选器</h5>
+                    <div class="mock-row"><span>活动</span><span class="mock-input">周赛第 03 期</span></div>
+                    <div class="mock-row"><span>手牌</span><span class="mock-input">H09 · River Bluff Catch</span></div>
+                    <div class="mock-row"><span>分群</span><span class="mock-input">全部用户 / Top 10% / Bottom 30%</span></div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>H09 概览</h5>
+                    <div class="cards-grid" style="grid-template-columns: repeat(2, 1fr); gap:8px;">
+                      <div class="mini-card" style="padding:10px;"><strong>1,532</strong><p>被分配</p></div>
+                      <div class="mini-card" style="padding:10px;"><strong>1,489</strong><p>完成</p></div>
+                      <div class="mini-card" style="padding:10px;"><strong>49.8</strong><p>平均得分</p></div>
+                      <div class="mini-card" style="padding:10px;"><strong>3.6BB</strong><p>平均 EV loss</p></div>
+                    </div>
+                    <div class="stat-bars">
+                      <div class="bar-row"><span>0-20 分</span><span class="bar-track"><span class="bar-fill red" style="width:18%"></span></span><b>18%</b></div>
+                      <div class="bar-row"><span>20-60 分</span><span class="bar-track"><span class="bar-fill warn" style="width:46%"></span></span><b>46%</b></div>
+                      <div class="bar-row"><span>60-100 分</span><span class="bar-track"><span class="bar-fill" style="width:36%"></span></span><b>36%</b></div>
+                    </div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>关键决策点</h5>
+                    <div class="mock-row"><span>Preflop · BB vs BTN open</span><span class="chip ok">正确率 72%</span><strong>n=1489</strong></div>
+                    <div class="mock-row"><span>Turn · OOP check facing 70% pot</span><span class="chip must">正确率 41%</span><strong>n=982</strong></div>
+                    <div class="mock-row"><span>River · bluff catch all-in</span><span class="chip bad">正确率 28%</span><strong>n=614</strong></div>
+                  </div>
+
+                  <div class="mock-card">
+                    <h5>River 节点动作分布</h5>
+                    <div class="stat-bars">
+                      <div class="bar-row"><span>Fold</span><span class="bar-track"><span class="bar-fill" style="width:28%"></span></span><b>28%</b></div>
+                      <div class="bar-row"><span>Call</span><span class="bar-track"><span class="bar-fill warn" style="width:62%"></span></span><b>62%</b></div>
+                      <div class="bar-row"><span>Raise</span><span class="bar-track"><span class="bar-fill red" style="width:10%"></span></span><b>10%</b></div>
+                    </div>
+                  </div>
+
+                  <div class="mock-card" style="display:flex; gap:10px; justify-content:flex-end;">
+                    <span class="secondary-btn" style="width:96px; margin:0;">导出 CSV</span>
+                    <span class="primary-btn" style="width:120px; margin:0;">生成讲解素材</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="triad-col formula">
+            <div class="col-title">右侧：数据 / 算法 / 公式 <small>统计口径</small></div>
+            <div class="col-body">
+              <h3>Decision Node 生成</h3>
+              <pre>decision_node_id = hash(
+  activity_id,
+  hand_id,
+  street,
+  hero_position,
+  public_cards_visible,
+  action_sequence_canonical,
+  pot_size_bucket,
+  effective_stack_bucket,
+  facing_action_type,
+  facing_bet_size_bucket
+)
+
+说明：
+- 只统计 Hero 实际触达的决策点
+- 用户提前 fold 后，不进入后续街道节点分母
+- 分支过多时按 canonical bucket 聚合</pre>
+
+              <h3>正确率定义</h3>
+              <pre>recommended_actions = solver.get_recommended_actions(node)
+user_action = normalize_action(action_event)
+ev_loss_bb = max_ev(node) - ev(user_action)
+
+is_correct = (
+  user_action.action_class in recommended_actions
+  AND ev_loss_bb &lt;= threshold_bb
+)
+
+MVP threshold_bb 建议：
+- preflop: 0.2BB
+- postflop small pot: 0.5BB
+- big pot / all-in node: 1.0BB 或按 pot% 动态阈值</pre>
+
+              <h3>节点统计</h3>
+              <pre>reach_count = count(users reached node)
+correct_count = count(is_correct)
+correct_rate = correct_count / reach_count
+
+action_distribution[action_class] = count(action_class) / reach_count
+sizing_distribution[bucket] = count(size_bucket) / count(bet_or_raise)
+avg_ev_loss = avg(ev_loss_bb)
+p50_ev_loss, p90_ev_loss = percentile(ev_loss_bb, [50, 90])</pre>
+
+              <h3>后台查询示例</h3>
+              <pre>GET /admin/activities/{activity_id}/hands/{hand_id}/stats
+GET /admin/activities/{activity_id}/hands/{hand_id}/decision-nodes
+GET /admin/activities/{activity_id}/decision-nodes/{node_id}/distribution
+GET /admin/activities/{activity_id}/export?type=decision_events</pre>
+
+              <div class="callout warn">
+                <strong>不要把“正确率”做成绝对真理：</strong>德扑存在混合策略和尺度连续性，前台可叫“推荐线匹配率 / EV 损失低于阈值比例”，后台再保留严格字段 <code>correct_rate</code>。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="models">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Data Model</div>
+            <h2>核心数据模型建议</h2>
+            <p class="lead">数据模型要同时服务对局恢复、计分、榜单、复盘、后台统计和审计。下面是 MVP 建议的最小实体集合。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead><tr><th>实体</th><th>关键字段</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td>ActivityEvent</td><td>id, name, status, start_time, end_time, scoring_mode, reveal_policy, hand_pack_id, play_hand_count</td><td>一次复式 PvE 活动。</td></tr>
+            <tr><td>HandPack</td><td>id, version, total_hands, ai_policy_version, checksum, baseline_cohort_id</td><td>候选手牌素材集合，例如 15 手。</td></tr>
+            <tr><td>HandDefinition</td><td>id, hand_pack_id, deck_order_ref, hero_slot, table_size, blinds, stack_bb, tags, difficulty</td><td>单手牌定义。隐藏牌和牌序只在服务端可读。</td></tr>
+            <tr><td>ActivityHandPolicy</td><td>activity_id, required_hand_ids, sampling_policy, shuffle_policy, weights_json</td><td>活动使用牌局包的规则。</td></tr>
+            <tr><td>ParticipantAttempt</td><td>id, activity_id, user_id, status, current_display_order, total_score, completed_at, fraud_status</td><td>用户在某活动中的一次有效尝试。</td></tr>
+            <tr><td>AttemptHandAssignment</td><td>attempt_id, hand_id, display_order, source, assignment_seed_ref</td><td>用户抽到的 10 手及展示顺序。join 后不可变。</td></tr>
+            <tr><td>HandAttempt</td><td>id, attempt_id, hand_id, status, raw_delta_bb, hand_score, score_type, started_at, completed_at</td><td>用户打一手的实例。</td></tr>
+            <tr><td>ActionEvent</td><td>id, hand_attempt_id, action_seq, actor, street, action_type, amount_bb, state_hash, request_id</td><td>对局行为事件。必须幂等、可审计。</td></tr>
+            <tr><td>GameSnapshot</td><td>id, hand_attempt_id, action_seq, visible_state_json, server_state_ref, created_at</td><td>恢复和回顾用状态快照。</td></tr>
+            <tr><td>ScoreSnapshot</td><td>id, activity_id, hand_id, hand_attempt_id, raw_delta_bb, score, score_type, cohort_size, formula_version</td><td>每手得分快照。支持参考、暂定、最终。</td></tr>
+            <tr><td>DecisionEvent</td><td>id, hand_attempt_id, decision_node_id, action_event_id, ev_loss_bb, is_correct, normalized_action</td><td>后台统计和教学分析用。</td></tr>
+            <tr><td>LeaderboardSnapshot</td><td>id, activity_id, status, version, generated_at, eligible_attempt_count, rows_ref, checksum</td><td>当前榜和最终榜快照。</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout good">
+          <strong>实现建议：</strong>ActionEvent 与 GameSnapshot 要优先做扎实。它们不仅支撑“离开回来回顾进程”，也是所有计分争议、AI 复盘和后台统计的证据链。
+        </div>
+      </section>
+
+      <section class="section" id="api">
+        <div class="section-header">
+          <div>
+            <div class="kicker">API Contract</div>
+            <h2>用户端与后台接口建议</h2>
+            <p class="lead">接口按“活动、参赛、对局动作、恢复、得分、排行榜、后台统计”拆分。下表是前后端评审可用的第一版接口范围。</p>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <h3>用户侧 API</h3>
+            <table>
+              <thead><tr><th>API</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td>GET /activities</td><td>活动列表，包含用户参与状态和继续入口。</td></tr>
+                <tr><td>GET /activities/:id</td><td>活动详情、规则、截止时间、当前参与人数。</td></tr>
+                <tr><td>POST /activities/:id/join</td><td>创建或返回当前有效 attempt；生成 hand assignment。</td></tr>
+                <tr><td>GET /attempts/:id/resume</td><td>恢复态：当前手、行动历史、进度、已完成手牌摘要。</td></tr>
+                <tr><td>POST /hand-attempts/:id/actions</td><td>提交动作，必须带 request_id，服务端校验合法动作。</td></tr>
+                <tr><td>GET /hand-attempts/:id/result</td><td>本手结果、raw_delta、hand_score、score_type、cohort_size。</td></tr>
+                <tr><td>GET /attempts/:id/provisional-rank</td><td>用户完成后查看当前排名。</td></tr>
+                <tr><td>GET /activities/:id/leaderboard</td><td>当前/最终榜单，根据活动状态返回。</td></tr>
+                <tr><td>GET /hand-attempts/:id/replay</td><td>复盘数据，受 reveal_policy 限制。</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h3>后台 API</h3>
+            <table>
+              <thead><tr><th>API</th><th>说明</th></tr></thead>
+              <tbody>
+                <tr><td>POST /admin/hand-packs</td><td>创建牌局包。</td></tr>
+                <tr><td>POST /admin/hand-packs/:id/validate</td><td>校验牌面、AI 版本、baseline、可复现性。</td></tr>
+                <tr><td>POST /admin/activities</td><td>创建活动草稿。</td></tr>
+                <tr><td>PUT /admin/activities/:id/hand-policy</td><td>配置必选手、抽样策略、打乱策略、权重。</td></tr>
+                <tr><td>POST /admin/activities/:id/publish</td><td>发布活动，执行硬校验。</td></tr>
+                <tr><td>POST /admin/activities/:id/settle</td><td>手动触发或重试最终结算。</td></tr>
+                <tr><td>GET /admin/activities/:id/hand-stats</td><td>每手概览统计。</td></tr>
+                <tr><td>GET /admin/activities/:id/hands/:handId/decision-nodes</td><td>某手所有决策点统计。</td></tr>
+                <tr><td>GET /admin/activities/:id/audit</td><td>参赛、计分、异常、后台操作审计。</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="edgecases">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Edge Cases</div>
+            <h2>关键异常与边界条件</h2>
+            <p class="lead">这个模块最容易出问题的不是 UI，而是“随机分配、断线恢复、样本不足、计分重算、活动截止、统计口径”这些边界。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead><tr><th>场景</th><th>处理规则</th><th>前台/后台表现</th></tr></thead>
+          <tbody>
+            <tr><td>用户 join 后立即退出</td><td>attempt 和 assignment 已创建，回来继续第 1 手。</td><td>首页显示“继续挑战 0/10”。</td></tr>
+            <tr><td>用户动作提交后断网</td><td>服务端若已写 ActionEvent，重试 request_id 返回同一结果；未写则重新提交。</td><td>客户端以 resume 状态纠正 UI。</td></tr>
+            <tr><td>Web 刷新 / App 被杀</td><td>读取最后一个 GameSnapshot 和 ActionEvent。</td><td>回到当前决策点或结果页。</td></tr>
+            <tr><td>活动截止时用户未完成</td><td>状态改为 expired_incomplete，不进最终主榜。</td><td>可看已完成手牌和说明，不能继续。</td></tr>
+            <tr><td>某 optional hand 样本不足</td><td>活动中使用 baseline_reference；最终若仍不足，后台标记低置信。</td><td>用户侧显示“参考分/样本较少”。</td></tr>
+            <tr><td>AI 版本存在 bug</td><td>已发布活动不热修；严重影响公平时取消或重赛。</td><td>后台记录原因，通知用户。</td></tr>
+            <tr><td>用户多设备同时打开</td><td>同一 attempt 只能有一个活动 session 提交动作；ActionEvent 以 request_id 幂等。</td><td>旧设备收到“状态已在其他设备更新”。</td></tr>
+            <tr><td>后台误改配置</td><td>发布后关键字段锁定；只能复制活动再发布。</td><td>admin_audit_log 记录所有变更。</td></tr>
+            <tr><td>用户作弊/多账号</td><td>fraud_status=pending_review，结算前可剔除。</td><td>最终榜单不展示 disqualified 用户。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section" id="acceptance">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Acceptance Criteria</div>
+            <h2>总体验收标准</h2>
+            <p class="lead">围绕投资人反复强调的两点“每手得分”和“任意离开后回顾进程”，再加上这次新增的后台配置、随机 10/15、当前/最终榜、后台统计，形成首版验收清单。</p>
+          </div>
+        </div>
+
+        <table>
+          <thead><tr><th>编号</th><th>验收项</th><th>通过标准</th></tr></thead>
+          <tbody>
+            <tr><td>AC-01</td><td>后台配置 15/10</td><td>后台可选择 15 手牌局包，配置每人打 10 手，并设置必选手和抽样策略。</td></tr>
+            <tr><td>AC-02</td><td>配置校验</td><td>必选手 &gt; 10、牌局包不足 10、AI 版本不一致、baseline 缺失时不能发布。</td></tr>
+            <tr><td>AC-03</td><td>用户随机分配</td><td>用户 join 后服务端生成 10 手 assignment，包含必选手和随机可选手，且刷新/恢复不变化。</td></tr>
+            <tr><td>AC-04</td><td>顺序打乱</td><td>不同用户的 display_order 可以不同，但后台计分和统计仍按 hand_id 聚合。</td></tr>
+            <tr><td>AC-05</td><td>每手得分</td><td>任一手完成后 2 秒内展示 raw_delta_bb 和 0-100 复式得分，并标记参考/暂定/最终。</td></tr>
+            <tr><td>AC-06</td><td>任意离开恢复</td><td>在任意决策点、结果页、复盘页离开后，再进入可恢复活动进度、当前手牌进程和行动时间线。</td></tr>
+            <tr><td>AC-07</td><td>当前排名</td><td>用户完成 10 手后可查看当前排名，明确标记“非最终排名”，展示样本量和更新时间。</td></tr>
+            <tr><td>AC-08</td><td>最终排名</td><td>活动截止后系统重算并冻结 final leaderboard snapshot，用户收到最终排名和完整复盘入口。</td></tr>
+            <tr><td>AC-09</td><td>后台每手统计</td><td>后台可查看每个 hand_id 的 assigned、started、completed、平均分、分布和流失。</td></tr>
+            <tr><td>AC-10</td><td>决策点统计</td><td>后台可查看每个 decision_node 的正确率、动作分布、EV loss、样本数和分群对比。</td></tr>
+            <tr><td>AC-11</td><td>防泄题</td><td>活动中用户侧不能获取未来牌面、AI 隐藏手牌、完整牌局包、其他用户完整打法。</td></tr>
+            <tr><td>AC-12</td><td>审计可追溯</td><td>任一最终排名都能追溯到 assignment、hand_attempt、action_event、score_snapshot、leaderboard_snapshot。</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section class="section" id="roadmap">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Delivery Plan</div>
+            <h2>MVP 分期建议</h2>
+            <p class="lead">为了尽快满足投资人评审，不建议首版把后台、风控、统计、教学讲解全部做满。可以按可演示、可小范围上线、可运营三个阶段推进。</p>
+          </div>
+        </div>
+
+        <div class="flow-line">
+          <div class="flow-step"><b>Phase 0：演示原型</b><span>固定 15 手牌局包；后台用配置文件；用户抽 10 手；每手 raw + baseline 分；内部榜。</span></div>
+          <div class="flow-step"><b>Phase 1：MVP</b><span>后台活动配置；必选手/随机手；每手得分；离开恢复；当前榜；最终榜。</span></div>
+          <div class="flow-step"><b>Phase 2：统计后台</b><span>每手统计、决策点正确率、动作分布、EV loss、导出和复盘素材。</span></div>
+          <div class="flow-step"><b>Phase 3：运营化</b><span>每日/周赛、好友榜、私房挑战、分享卡、徽章、风控增强。</span></div>
+          <div class="flow-step"><b>Phase 4：高级复式</b><span>多座位轮转、团队赛、IMP-like 计分、直播讲解和裁判工具。</span></div>
+        </div>
+      </section>
+
+      <section class="section" id="challenge">
+        <div class="section-header">
+          <div>
+            <div class="kicker">Critical Notes</div>
+            <h2>审慎挑战：随机 10/15 是产品亮点，也可能是公平性坑点</h2>
+            <p class="lead">这次需求中最值得提前和投资人确认的，不是 UI 长什么样，而是“用户是否必须拿到不同的 10 手”。因为只要每个人题目不同，全局排名就会被题目组合难度影响。</p>
+          </div>
+        </div>
+
+        <div class="cards-grid">
+          <div class="mini-card">
+            <strong>更公平方案</strong>
+            <p>所有用户打同一 10 手，只打乱顺序。这样完全同题，解释成本最低，也最符合“复式”的严格公平。</p>
+          </div>
+          <div class="mini-card">
+            <strong>兼顾方案</strong>
+            <p>15 手包中 6-8 手必选，剩余 2-4 手按难度/标签分层随机。既有随机感，也能降低题目组合差异。</p>
+          </div>
+          <div class="mini-card">
+            <strong>不推荐方案</strong>
+            <p>15 手纯随机抽 10 手。除非活动只做娱乐和练习，否则主榜争议会比较大，尤其样本量不足时。</p>
+          </div>
+          <div class="mini-card">
+            <strong>对外表达</strong>
+            <p>用户侧不要讲复杂“复式比赛场”。建议叫“同题挑战”“策略挑战”“每日 10 手挑战”，分数页再解释相对排名。</p>
+          </div>
+        </div>
+
+        <div class="callout warn">
+          <strong>建议在下次评审直接问投资人：</strong>“你希望的是严格同题公平，还是希望每个用户从大牌局包中抽不同题目以降低泄题和提升新鲜感？”这两个目标不是完全一致的。如果目标是严格复式，随机应只用于顺序；如果目标是活动运营和防泄题，随机抽手可以做，但要接受公平性需要额外机制弥补。
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      复式 PvE 排名赛场 PRD · HTML Visual Spec · v1.0 · 2026-06-24
+    </footer>
+  </div>
+</body>
+</html>
