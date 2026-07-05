@@ -603,7 +603,7 @@ XXX
 
 ## 9. Mermaid 图
 
-优先用 Mermaid 画图描述流程，语法需要支持 Cursor 正常显示。
+优先用 Mermaid 画图描述流程，语法需要支持 Cursor 和 浏览器 正常显示。
 
 ### 9.1 Mermaid 图拆分规则
 
