@@ -80,7 +80,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    Client[播放器]
+    Client[骑手客户端]
     Service[业务服务]
     Redis[Redis]
     Worker[Worker]
@@ -162,11 +162,15 @@ SET course:detail:v1:{course_id}:lock {token} NX PX 3000
 读请求条件写入：
 
 ```text
-数据版本 >= 栅栏版本：
-    写入缓存
+传入版本 < 栅栏版本或当前缓存版本：
+    返回 STALE，拒绝写入
 
-数据版本 < 栅栏版本：
-    拒绝写入
+传入版本 = 当前缓存版本：
+    返回 IDEMPOTENT
+
+传入版本不小于栅栏版本，且大于当前缓存版本：
+    写入缓存并同步推进栅栏版本
+    返回 APPLIED
 ```
 
 写请求缓存失效：
@@ -596,7 +600,7 @@ sequenceDiagram
     Redis-->>Cache: 返回缓存未命中
 
     Cache->>MySQL: 调用 Loader 查询课程详情
-    MySQL-->>Cache: 返回 NOT_FOUND，版本0
+    MySQL-->>Cache: 返回 NOT_FOUND 和当前 tombstone_version
 
     Cache->>Redis: 按版本栅栏条件写入短期空值
     Redis-->>Cache: 返回 APPLIED
@@ -605,7 +609,7 @@ sequenceDiagram
     Service-->>Client: 返回课程不存在
 ```
 
-> **结论：** 只有 Loader 返回带版本的 `NOT_FOUND` 时，缓存组件才按版本条件写入短期空值。
+> **结论：** 只有 Loader 明确返回 `NOT_FOUND`，并携带可参与版本比较的 `tombstone_version` 时，缓存组件才按版本条件写入短期空值。
 
 ---
 
@@ -1050,294 +1054,351 @@ data_version：保护 Redis
 
 ### 3.4 Write Behind（异步回写）
 
-#### 3.4.1 定义与适用场景
+#### 3.4.1 它解决什么问题
 
-> **Write Behind 先把实时状态和待落库事件写入 Redis，前台不等待 MySQL；Worker 再异步、批量持久化，并在 MySQL 提交成功后执行 ACK。**
+骑手配送过程中会频繁上报 GPS 位置。
 
-适合播放位置这类写入频繁、连续版本只关心最新状态，并允许延迟持久化的数据。
+如果每次位置变化都同步写入 MySQL，会增加接口延迟和数据库写入压力；而用户查看地图时，通常只关心骑手的最新位置。
 
-> **`accepted` 只表示 Redis 已接受实时状态和待落库事件，不代表 MySQL 已经提交。**
+因此，可以先把实时位置和待落库事件写入 Redis，由 Worker 异步、批量写入 MySQL。
 
----
+> **Write Behind 让前台只等待 Redis，MySQL 由 Worker 异步更新。**
 
-#### 3.4.2 四个核心规则
+适合骑手位置这类高频、可覆盖、允许延迟落库的数据。
 
-##### 3.4.2.1 前台原子接收与幂等
-
-业务服务通过 Redis Lua 脚本或 Function 原子执行：
-
-```text
-校验请求
-→ report_id 去重
-→ 生成数据版本
-→ XADD 待落库事件
-→ 更新实时状态
-→ 保存去重结果
-```
-
-端到端幂等使用：
-
-```text
-producer_id + report_id
-```
-
-必须遵守以下规则：
-
-* 相同 `report_id`、相同 `request_hash`：返回第一次处理结果。
-* 相同 `report_id`、不同 `request_hash`：拒绝请求。
-* Redis 返回结果未知：使用相同的 `producer_id + report_id + request_hash` 重试。
-* MySQL 对 `(producer_id, report_id)` 建立唯一约束，作为最终幂等保障。
-
-脚本必须在首次写入前完成参数和 Key 类型校验。Redis Cluster 环境下，同一次脚本涉及的去重、版本、Stream 和实时状态 Key 必须使用相同 Hash Tag 落在同一 Slot；否则应拆分脚本或调整 Key 设计。
-
-> **Redis 原子执行只能保证没有其他命令穿插，不表示脚本报错后会自动回滚已经执行的写操作。**
+> **`accepted` 只表示 Redis 已经接收，不代表 MySQL 已经提交。**
 
 ---
 
-##### 3.4.2.2 版本顺序与合并边界
+#### 3.4.2 当前方案如何运行
 
-Redis 实时状态、Stream 事件和 MySQL 统一使用：
+##### 3.4.2.1 基础流程
 
-```text
-version_epoch + version_sequence
+```mermaid
+flowchart LR
+    Rider[骑手客户端]
+    Service[位置服务]
+    Redis[Redis<br/>实时位置 + Stream]
+    Worker[回写 Worker]
+    MySQL[MySQL]
+
+    Rider -->|1. 上报位置| Service
+    Service -->|2. 校验位置数据| Service
+    Service -->|3. 原子判断并按需写入| Redis
+    Redis -->|4. 写入成功| Service
+    Service -->|5. 返回 accepted| Rider
+
+    Worker -->|6. 读取位置事件| Redis
+    Worker -->|7. 合并最新位置| Worker
+    Worker -->|8. 批量写入| MySQL
+    MySQL -->|9. 提交成功| Worker
+    Worker -->|10. XACK| Redis
 ```
 
-版本比较规则：
-
-```text
-先比较 version_epoch
-→ epoch 相同再比较 version_sequence
-```
-
-`version_epoch` 和 sequence 生成器元数据不能跟随实时状态一起过期。版本元数据丢失或 sequence 需要重置时，必须先在 MySQL 中持久化提升 `version_epoch`，再开放新的写入。
-
-数据分为两类：
-
-* 播放位置等覆盖型状态：可以只落库最高版本。
-* 奖励、考试、计费、审计等独立事件：不能合并为最高版本。
-
-MySQL 处理事件时，先根据 `producer_id + report_id` 去重，再比较完整版本；旧版本不更新状态，但可以视为已经处理。
+> **前台只等待 Redis 写入成功，Worker 再异步批量写入 MySQL，并在事务提交成功后 ACK。**
 
 ---
 
-##### 3.4.2.3 MySQL 提交后才能 ACK
+#### 3.4.3 四个核心机制
 
-Worker 的处理顺序：
+##### 3.4.3.1 防止同一次位置上报被重复处理
+
+骑手上报位置后，可能因为网络超时没有收到响应，于是使用相同的 `report_id` 再次提交。
+
+位置服务对请求内容进行规范化并计算 `request_hash`，然后每次都通过 Lua 或 Redis Function 原子处理：
 
 ```text
-有限批量读取
-→ 合并可覆盖状态
-→ MySQL 更新最高版本状态并记录本批全部 report_id
-→ MySQL 事务提交成功
+report_id 不存在：
+    处理新请求
+
+report_id 已存在且 request_hash 相同：
+    返回第一次处理结果，不重复写入
+
+report_id 已存在但 request_hash 不同：
+    说明 report_id 被错误复用，拒绝请求
+```
+
+对于新请求，原子脚本继续比较 `location_seq`，决定是否更新实时位置、写入 Stream，并保存本次处理结果。
+
+MySQL 使用 `(producer_id, report_id)` 唯一约束，防止消息重复消费产生重复结果。
+
+> **`report_id` 识别同一次请求，`request_hash` 防止同一个 ID 被用于不同内容。**
+
+---
+
+##### 3.4.3.2 防止旧位置覆盖新位置
+
+骑手依次采集了三个位置：
+
+```text
+位置 A：location_seq=128
+位置 B：location_seq=129
+位置 C：location_seq=130
+```
+
+由于网络延迟，后端收到请求的顺序可能变成：
+
+```text
+位置 C：location_seq=130
+位置 B：location_seq=129
+位置 A：location_seq=128
+```
+
+因此，`location_seq` 不能按照后端接收顺序生成，而应由客户端在采集位置时递增。
+
+Redis 的处理规则是：
+
+```text
+location_seq 大于当前序号：
+    更新实时位置
+    写入 Stream
+    返回 APPLIED
+
+location_seq 小于或等于当前序号：
+    不覆盖实时位置
+    不写入 Stream
+    返回 STALE
+```
+
+Worker 写入 MySQL 时同样只允许更大的 `location_seq` 更新当前持久化位置。
+
+`location_seq` 只适用于位置等可覆盖状态；接单、送达、支付等独立业务事件不能合并。
+
+> **`location_seq` 表示真实采集顺序，用来防止延迟到达的旧位置覆盖新位置。**
+
+本例要求客户端持久化最后的 `location_seq`，重启后继续递增，避免序号回退。
+
+---
+
+##### 3.4.3.3 防止消息已经确认，但位置没有落库
+
+Worker 从 Redis Stream 读取消息后，消息会进入 Pending，但此时并不代表 MySQL 已经写入成功。
+
+正确顺序是：
+
+```text
+读取 Stream
+→ 合并最新位置
+→ 幂等写入 MySQL
+→ MySQL 事务提交
 → XACK
 ```
 
-Worker 可以只用最高版本更新状态，但必须在同一个 MySQL 事务中记录本批全部 `report_id`。MySQL 事务失败时不能执行 `XACK`，否则消息可能已经完成消费确认，但业务数据并未持久化。
-
----
-
-##### 3.4.2.4 积压控制与 RPO 边界
-
-MySQL 连续失败时，Worker 应暂停继续读取新消息，让 Stream lag 增长，而不是无限扩大 Pending。
-
-消息只能在满足以下条件后清理：
+需要处理两种情况：
 
 ```text
-单消费组：该组已经 ACK
-多消费组：所有消费组均已 ACK
-共同条件：超过故障恢复窗口
+MySQL 写入失败：
+    不执行 XACK，消息继续保留在 Pending 中等待重试
+
+MySQL 已提交，但 Worker 在 XACK 前崩溃：
+    消息会被再次处理，由 MySQL 唯一约束保证幂等
 ```
 
-Redis 8.2 及以上可使用支持 `ACKED` 语义的清理策略，避免删除仍被其他消费组引用的消息。
-
-Redis 保存的是尚未落库的数据，因此 Redis 故障可能造成明确的 RPO 损失。
-
-> **成绩、余额、支付和库存等关键数据，不适合直接使用纯 Write Behind。**
+> **先提交 MySQL，再执行 XACK；因为消息可能重复，所以 MySQL 写入必须幂等。**
 
 ---
 
-#### 3.4.3 正常路径
+##### 3.4.3.4 防止消息积压失控，并明确数据丢失边界
 
-##### 3.4.3.1 前台接受学习进度
+MySQL 不可用时，位置事件仍可能继续写入 Redis，造成：
+
+```text
+Stream lag 增长
+Pending 增长
+Redis 内存持续上涨
+```
+
+因此需要监控 Stream lag、Pending 和 Redis 内存，并在接近容量阈值时降低消费或上报速度。
+
+同时，Redis 中保存着尚未落库的数据。如果 Redis 在这些数据写入 MySQL 前发生不可恢复故障，MySQL 只能保留旧位置。
+
+> **MySQL 故障会造成消息积压，Redis 故障可能造成未落库数据丢失，这就是 Write Behind 的 RPO 边界。**
+
+Write Behind 适合允许丢失少量中间状态的数据，不适合支付、余额、库存和订单状态等关键数据。
+
+---
+
+#### 3.4.4 正常路径
+
+##### 3.4.4.1 前台接收骑手位置
+
+骑手客户端在采集位置时递增 `location_seq`，并为本次上报生成唯一的 `report_id`。
+
+位置服务负责业务校验和计算 `request_hash`；Redis 原子完成请求去重、位置新旧判断、实时位置更新和 Stream 写入。
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Client as 播放器
-    participant Service as 业务服务
+
+    participant Rider as 骑手客户端
+    participant Service as 位置服务
     participant Redis as Redis
 
-    Client->>Service: 上报进度、producer_id、report_id 和 request_hash
-    Service->>Service: 校验用户、课程和请求参数
+    Rider->>Rider: 采集位置并生成 report_id、location_seq
+    Rider->>Service: 上报位置数据
+    Service->>Service: 校验数据并计算 request_hash
+    Service->>Redis: 执行原子位置接收脚本
+    Redis->>Redis: 检查 report_id
 
-    Service->>Redis: 执行进度写入脚本
-    Redis->>Redis: 预校验 Key 类型和请求字段
-    Redis->>Redis: 校验 report_id 或返回原结果
-    Redis->>Redis: 生成版本 2:128
-    Redis->>Redis: XADD 待落库事件
-    Redis->>Redis: 更新实时状态和去重结果
-    Redis-->>Service: 返回版本 2:128
+    alt 相同 report_id、相同内容
+        Redis-->>Service: 返回第一次处理结果
+        Service-->>Rider: 返回 accepted
+    else 相同 report_id、不同内容
+        Redis-->>Service: 返回 CONFLICT
+        Service-->>Rider: 拒绝请求
+    else 新 report_id
+        Redis->>Redis: 比较 location_seq
 
-    Service-->>Client: 返回 accepted 和版本 2:128
+        alt location_seq 更新
+            Redis->>Redis: 更新实时位置并 XADD
+            Redis->>Redis: 保存 APPLIED 结果
+            Redis-->>Service: 返回 APPLIED
+            Service-->>Rider: 返回 accepted
+        else location_seq 已过期
+            Redis->>Redis: 保存 STALE 结果
+            Redis-->>Service: 返回 STALE
+            Service-->>Rider: 返回 accepted
+        end
+    end
 ```
 
-> **结论：** `accepted` 只表示 Redis 已记录实时状态和待落库事件，MySQL 此时可能仍然是旧版本。
+处理结果：
+
+```text
+APPLIED：更新实时位置并写入 Stream
+STALE：位置已过期，不更新、不写入 Stream
+IDEMPOTENT：重复请求，返回第一次结果
+CONFLICT：相同 report_id 对应不同内容
+```
+
+> **`location_seq` 判断位置新旧，`report_id` 判断是否为同一次请求重试。**
 
 ---
 
-##### 3.4.3.2 Worker 批量落库并 ACK
+##### 3.4.4.2 Worker 批量落库并 ACK
+
+Redis Stream 中只保存通过新旧判断、返回 `APPLIED` 的位置事件。
+
+Worker 可以合并同一骑手的多个位置，只把最大的 `location_seq` 更新到位置表。
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant Worker as 回写 Worker
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
-    Worker->>Worker: 检查 MySQL 熔断状态
     Worker->>Redis: XREADGROUP 读取有限批次
     Redis-->>Worker: 返回事件并进入 Pending
+    Worker->>Worker: 按骑手合并最大 location_seq
 
-    Worker->>Worker: 合并可覆盖状态的最高版本
-    Worker->>MySQL: 更新最高版本状态并记录本批全部 report_id
+    Worker->>MySQL: 开启事务
+    Worker->>MySQL: 幂等登记事件并条件更新位置
     MySQL-->>Worker: 事务提交成功
 
-    Worker->>Redis: XACK 已持久化事件
-    Redis-->>Worker: 返回 ACK 数量
-
-    Worker->>Worker: 记录批次处理结果
+    Worker->>Redis: XACK 本批事件
+    Redis-->>Worker: ACK 成功
 ```
 
-> **结论：** Worker 只合并可覆盖状态，但需记录本批全部 `report_id`，并且必须在 MySQL 提交成功后才能执行 `XACK`。
+> **Worker 可以合并可覆盖的位置，但必须幂等处理每条事件，并在 MySQL 提交后才能 ACK。**
 
 ---
 
-#### 3.4.4 核心异常路径
+#### 3.4.5 核心异常路径
 
-##### 3.4.4.1 MySQL 写入失败
+##### 3.4.5.1 MySQL 写入失败
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant Worker as 回写 Worker
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
-    Worker->>Redis: XREADGROUP 读取有限批次
-    Redis-->>Worker: 事件进入 Pending
-
-    Worker->>MySQL: 幂等批量写入进度
+    Worker->>Redis: XREADGROUP 读取位置事件
+    Redis-->>Worker: 消息进入 Pending
+    Worker->>MySQL: 幂等批量写入位置
     MySQL-->>Worker: 事务失败并回滚
-
-    Worker->>Worker: 不执行 XACK
-    Worker->>Worker: 增加失败计数并退避
-    Worker->>Worker: 达到阈值后打开 MySQL 熔断器
+    Worker->>Worker: 不执行 XACK，等待重试
 ```
 
-> **结论：** MySQL 事务失败时不能 `XACK`，消息保留在 Pending，等待数据库恢复后重新处理。
+> **MySQL 事务失败时不能执行 `XACK`，消息继续保留在 Pending 中。**
 
 ---
 
-##### 3.4.4.2 MySQL 已提交，但 ACK 前 Worker 崩溃
+##### 3.4.5.2 MySQL 已提交，但 ACK 前 Worker 崩溃
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant WorkerA as Worker A
     participant WorkerB as Worker B
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
     WorkerA->>Redis: XREADGROUP 读取事件
-    Redis-->>WorkerA: 事件进入 Pending
-
-    WorkerA->>MySQL: 按 report_id 幂等写入版本 2:128
+    Redis-->>WorkerA: 消息进入 Pending
+    WorkerA->>MySQL: 幂等写入
     MySQL-->>WorkerA: 事务提交成功
-
-    WorkerA--xWorkerA: ACK 前进程崩溃
+    WorkerA--xWorkerA: XACK 前崩溃
 
     WorkerB->>Redis: XAUTOCLAIM 接管超时事件
-    Redis-->>WorkerB: 返回事件
-
-    WorkerB->>MySQL: 按相同 report_id 再次写入版本 2:128
-    MySQL-->>WorkerB: 命中唯一约束并返回原结果
-
-    WorkerB->>Redis: XACK 事件
-    Redis-->>WorkerB: ACK 成功
+    Redis-->>WorkerB: 返回待处理事件
+    WorkerB->>MySQL: 使用相同 report_id 再次写入
+    MySQL-->>WorkerB: 确认事件已经处理
+    WorkerB->>Redis: XACK
 ```
 
-> **结论：** 事件可能被重复处理，MySQL 唯一约束保证不会产生第二次业务结果，接管 Worker 最终完成 `XACK`。
+> **Stream 消息可能重复处理，MySQL 唯一约束保证不会产生第二次业务结果。**
 
 ---
 
-##### 3.4.4.3 MySQL 长时间不可用导致积压
+##### 3.4.5.3 MySQL 长时间不可用
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Worker as 回写 Worker
-    participant Redis as Redis Stream
-    participant MySQL as MySQL
-    participant Control as 流量控制
+MySQL 长时间不可用时，应暂停或减少读取新消息，并监控：
 
-    Worker->>MySQL: 当前在途批次写入
-    MySQL-->>Worker: 数据库持续不可用
-
-    Worker->>Worker: 打开 MySQL 熔断器
-    Worker->>Worker: 暂停读取新的 Stream 消息
-
-    Worker->>Redis: 查询 lag、Pending 和内存
-    Redis-->>Worker: 返回积压状态
-
-    Worker->>Control: 上报积压和容量风险
-    Control->>Control: 告警、扩容或限制新写入
-
-    MySQL-->>Worker: 数据库恢复
-    Worker->>Worker: 关闭熔断并恢复有限批量消费
+```text
+Stream lag
+Pending 数量
+Redis 内存
 ```
 
-> **结论：** MySQL 持续故障时暂停读取新消息，容量接近阈值时限制前台写入，数据库恢复后再逐步消费积压。
+接近容量阈值时，需要降低位置上报速度或限制新写入；MySQL 恢复后再逐步处理积压。
+
+> **核心目标是避免积压持续扩大，最终耗尽 Redis 内存。**
 
 ---
 
-##### 3.4.4.4 Redis 故障导致未落库数据丢失
+##### 3.4.5.4 Redis 丢失尚未落库的位置
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Client as 播放器
-    participant Service as 业务服务
-    participant Redis as Redis
-    participant Worker as 回写 Worker
-    participant MySQL as MySQL
+例如：
 
-    Client->>Service: 上报学习进度
-    Service->>Redis: 写入实时状态和待落库事件
-    Redis-->>Service: 返回写入成功
-    Service-->>Client: 返回 accepted
-
-    Redis--xRedis: 数据可靠持久化前发生不可恢复故障
-
-    Worker->>Redis: 尝试读取待落库事件
-    Redis-->>Worker: 最新事件已经不存在
-
-    Worker->>MySQL: 查询持久化进度
-    MySQL-->>Worker: 只返回旧版本 2:127
-
-    Worker->>Worker: 记录不可自动恢复告警
-    Worker->>Service: 标记需要客户端重传
-
-    Client->>Service: 下次恢复时查询进度
-    Service-->>Client: 返回旧版本并请求使用原 report_id 重传
+```text
+Redis 已保存 location_seq=130
+MySQL 只保存到 location_seq=129
 ```
 
-> **结论：** Redis 丢失尚未落库的事件时，服务端可能无法自动恢复，只能依赖客户端重传、其他副本或备份，这就是 Write Behind 的 RPO 代价。
+如果 Redis 在 130 落库前发生不可恢复故障，MySQL 最终只能保留 129。
+
+> **Redis 丢失尚未落库的位置时，MySQL 只能保留旧位置，这就是 Write Behind 的 RPO 代价。**
 
 ---
 
-#### 3.4.5 最终记忆
+#### 3.4.6 最终记忆
 
-> **Write Behind 让前台只等待 Redis，Worker 在 MySQL 提交后才执行 `XACK`；它只适合可覆盖、可重放、允许延迟持久化并能接受明确 RPO 的状态数据。**
+> **Write Behind 让前台只等待 Redis，Worker 异步写入 MySQL，并在提交成功后 ACK。**
+
+```text
+report_id：防止同一次请求重复处理
+location_seq：防止旧位置覆盖新位置
+ACK：MySQL 提交成功后才能执行
+RPO：Redis 中尚未落库的位置可能丢失
+```
+
+> **适合高频、可覆盖、允许延迟落库的数据，不适合支付、余额、库存和订单状态等关键数据。**
 
 
 ## 4. 横向对比
@@ -1347,7 +1408,7 @@ sequenceDiagram
 | Cache Aside | 读为主，也定义更新后失效 | 业务服务 | MySQL | 是（本例更新路径） | 击穿、失效失败、短暂旧数据 | 课程详情等读多写少数据 |
 | Read Through | 读 | 缓存组件 | MySQL | 不由读取模式定义 | 隐藏回源耗时、组件过度抽象 | 多个模块需要统一缓存治理 |
 | Write Through 式同步双写（MySQL 优先） | 写 | 统一写入层 | MySQL | 是 | Redis 与 MySQL 部分成功、写延迟增加 | 多个写入口需要统一治理，并希望尽量同步准备缓存 |
-| Write Behind | 写 | Redis + Worker | MySQL 保存长期结果，Redis 保存实时状态 | 否 | 未落库数据丢失、重复、乱序和积压 | 高频且允许延迟落库的覆盖型状态 |
+| Write Behind | 写 | 位置服务 + Worker | MySQL 保存长期结果，Redis 保存实时状态 | 否 | 未落库数据丢失、重复、乱序和积压 | 高频且允许延迟落库的覆盖型状态 |
 
 ## 5. 最终结论
 
