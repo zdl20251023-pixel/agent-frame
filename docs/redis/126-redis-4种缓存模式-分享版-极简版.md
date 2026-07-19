@@ -1,20 +1,18 @@
 # Redis 四种缓存模式
 
-> **阅读定位：**本稿以 Cache Aside 作为主案例，保留相对完整的工程细节；Read Through、Write Through 和 Write Behind 用于说明职责差异、关键风险与选型边界。四种模式不是逐级升级关系，也不是必须按顺序使用。
-
 ## 1. 缓存模式是什么
 
 **缓存模式是规定业务服务、Redis 与 MySQL 在数据读写时由谁负责、按什么顺序访问，以及同步还是异步更新的一套协作策略，用于在性能、数据一致性和工程复杂度之间做取舍。**
 
 
-## 2. 四种缓存模式的直观印象
+## 2. 四种缓存模式概览
 
 四种模式分为两组：
 
-* **读取模式：**Cache Aside、Read Through。
-* **写入模式：**Write Through、Write Behind。
+* **读取模式：** Cache Aside、Read Through。
+* **写入模式：** Write Through、Write Behind。
 
-四种模式彼此并列，也可以组合使用。
+四种模式彼此并列，也可以组合使用。这里按模式主要解决的路径分组；Cache Aside 虽归入读取模式，也包含更新后的缓存失效策略。
 
 ### 2.1 两种读取模式
 
@@ -98,9 +96,6 @@ flowchart LR
     Worker -->|8. ACK| Redis
 ```
 
-> **读取模式看谁负责回源，写入模式看前台是否等待 MySQL。**
-
-
 ## 3. 四种模式如何运行
 
 ### 3.1 Cache Aside（旁路缓存）
@@ -109,7 +104,7 @@ flowchart LR
 
 > **Cache Aside 由业务服务主动管理缓存：读取时先查 Redis，未命中再查询 MySQL 并写回；更新时先提交 MySQL，再失效缓存。**
 
-适合课程详情这类读多写少、存在热点访问，并允许短暂最终一致的数据。
+适合课程详情这类读多写少、可能存在热点，并允许缓存短暂不一致的场景。
 
 ---
 
@@ -120,9 +115,9 @@ flowchart LR
 同一门课程使用三个 Redis Key：
 
 ```text
-course:detail:v1:{cursorId}:data
-course:detail:v1:{cursorId}:version
-course:detail:v1:{cursorId}:lock
+course:detail:v1:{course_id}:data
+course:detail:v1:{course_id}:version
+course:detail:v1:{course_id}:lock
 ```
 
 其中：
@@ -131,7 +126,7 @@ course:detail:v1:{cursorId}:lock
 * `version`：阻止旧版本数据重新写回。
 * `lock`：限制同一课程被并发重建。
 
-同一课程的三个 Key 使用相同 `cursorId`，便于通过 Lua 或 Redis Function 一次处理。
+同一课程的三个 Key 使用相同 `course_id`，便于通过 Lua 或 Redis Function 一次处理。
 
 标题、封面、讲师介绍等展示数据适合缓存；价格、资格、支付结果等强一致数据应独立处理。
 
@@ -146,7 +141,7 @@ course:detail:v1:{cursorId}:lock
 热点缓存未命中时，使用带 token 的短锁：
 
 ```text
-SET course:detail:v1:{cursorId}:lock {token} NX PX 3000
+SET course:detail:v1:{course_id}:lock {token} NX PX 3000
 ```
 
 必须遵守四条规则：
@@ -185,7 +180,7 @@ SET course:detail:v1:{cursorId}:lock {token} NX PX 3000
     忽略
 ```
 
-两个操作都需要通过 Lua 或 Redis Function 原子完成。
+两个操作都需要通过 Lua 或 Redis Function 原子完成。快照条件写入统一返回 `APPLIED / IDEMPOTENT / STALE / ERROR`；版本推进并删除缓存返回 `APPLIED / IGNORED / ERROR`。
 
 > **版本栅栏可以处理旧读请求、重复事件和乱序事件，但只能保证最终收敛，不提供强一致读取。**
 
@@ -225,14 +220,15 @@ Worker 根据 `data_version` 幂等处理重复和乱序事件。
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Redis as Redis
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Redis: 2. GET data Key
-    Redis-->>Service: 3. 返回课程详情
-    Service-->>Client: 4. 返回结果
+    Client->>Service: 查询课程详情
+    Service->>Redis: GET data Key
+    Redis-->>Service: 返回课程详情
+    Service-->>Client: 返回结果
 ```
 
 ##### 3.1.4.2 缓存未命中并成功重建
@@ -241,31 +237,32 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Redis: 2. GET data Key
-    Redis-->>Service: 3. 缓存未命中
+    Client->>Service: 查询课程详情
+    Service->>Redis: GET data Key
+    Redis-->>Service: 缓存未命中
 
-    Service->>Redis: 4. 获取带 token 的短锁
-    Redis-->>Service: 5. 获取成功
+    Service->>Redis: 获取带 token 的短锁
+    Redis-->>Service: 获取成功
 
-    Service->>Redis: 6. 再次读取 data Key
-    Redis-->>Service: 7. 仍然未命中
+    Service->>Redis: 再次读取 data Key
+    Redis-->>Service: 仍然未命中
 
-    Service->>MySQL: 8. 查询课程详情和版本
-    MySQL-->>Service: 9. 返回版本 18
+    Service->>MySQL: 查询课程详情和版本
+    MySQL-->>Service: 返回版本 18
 
-    Service->>Redis: 10. 条件写入版本 18
-    Redis-->>Service: 11. 返回 WRITTEN
+    Service->>Redis: 条件写入版本 18
+    Redis-->>Service: 返回 APPLIED
 
-    Service->>Redis: 12. 校验 token 并释放锁
-    Redis-->>Service: 13. 释放成功
+    Service->>Redis: 校验 token 并释放锁
+    Redis-->>Service: 释放成功
 
-    Service-->>Client: 14. 返回课程详情
+    Service-->>Client: 返回课程详情
 ```
 
 Redis 写回失败时，通常仍可返回 MySQL 查询结果，并记录缓存写入失败。
@@ -278,24 +275,25 @@ Redis 写回失败时，通常仍可返回 MySQL 查询结果，并记录缓存�
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Admin->>Service: 1. 修改课程信息
+    Admin->>Service: 修改课程信息
 
-    Service->>MySQL: 2. 开启事务
-    Service->>MySQL: 3. 更新课程并递增到版本 19
-    Service->>MySQL: 4. 写入版本 19 的 Outbox
-    Service->>MySQL: 5. 提交事务
-    MySQL-->>Service: 6. 提交成功
+    Service->>MySQL: 开启事务
+    Service->>MySQL: 更新课程并递增到版本 19
+    Service->>MySQL: 写入版本 19 的 Outbox
+    Service->>MySQL: 提交事务
+    MySQL-->>Service: 提交成功
 
-    Service->>Redis: 7. 推进栅栏并删除 data Key
-    Redis-->>Service: 8. 返回 APPLIED
+    Service->>Redis: 推进栅栏并删除 data Key
+    Redis-->>Service: 返回 APPLIED
 
-    Service->>MySQL: 9. 标记 Outbox 完成
-    Service-->>Admin: 10. 返回更新成功
+    Service->>MySQL: 标记 Outbox 完成
+    Service-->>Admin: 返回更新成功
 ```
 
 MySQL 提交成功后业务更新成立；Redis 失败由 Worker 补偿。
@@ -308,6 +306,7 @@ MySQL 提交成功后业务更新成立；Redis 失败由 Worker 补偿。
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client1 as 用户请求 1
     participant Service1 as 业务服务 A
     participant Client2 as 用户请求 2
@@ -315,41 +314,41 @@ sequenceDiagram
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client1->>Service1: 1. 查询课程详情
-    Client2->>Service2: 2. 查询课程详情
+    Client1->>Service1: 查询课程详情
+    Client2->>Service2: 查询课程详情
 
-    Service1->>Redis: 3. GET data Key
-    Redis-->>Service1: 4. 缓存未命中
+    Service1->>Redis: GET data Key
+    Redis-->>Service1: 缓存未命中
 
-    Service2->>Redis: 5. GET data Key
-    Redis-->>Service2: 6. 缓存未命中
+    Service2->>Redis: GET data Key
+    Redis-->>Service2: 缓存未命中
 
-    Service1->>Redis: 7. 获取重建锁
-    Redis-->>Service1: 8. 获取成功
+    Service1->>Redis: 获取重建锁
+    Redis-->>Service1: 获取成功
 
-    Service2->>Redis: 9. 获取重建锁
-    Redis-->>Service2: 10. 获取失败
+    Service2->>Redis: 获取重建锁
+    Redis-->>Service2: 获取失败
 
-    Service1->>Redis: 11. 锁内再次读取缓存
-    Redis-->>Service1: 12. 仍然未命中
+    Service1->>Redis: 锁内再次读取缓存
+    Redis-->>Service1: 仍然未命中
 
-    Service1->>MySQL: 13. 查询课程详情和版本
-    MySQL-->>Service1: 14. 返回课程数据
+    Service1->>MySQL: 查询课程详情和版本
+    MySQL-->>Service1: 返回课程数据
 
-    Service1->>Redis: 15. 条件写入缓存
-    Redis-->>Service1: 16. 返回 WRITTEN
+    Service1->>Redis: 条件写入缓存
+    Redis-->>Service1: 返回 APPLIED
 
-    Service1->>Redis: 17. 校验 token 并释放锁
-    Redis-->>Service1: 18. 释放成功
-    Service1-->>Client1: 19. 返回课程详情
+    Service1->>Redis: 校验 token 并释放锁
+    Redis-->>Service1: 释放成功
+    Service1-->>Client1: 返回课程详情
 
-    Service2->>Service2: 20. 短暂等待
-    Service2->>Redis: 21. 再次读取缓存
-    Redis-->>Service2: 22. 返回已重建的数据
-    Service2-->>Client2: 23. 返回课程详情
+    Service2->>Service2: 短暂等待
+    Service2->>Redis: 再次读取缓存
+    Redis-->>Service2: 返回已重建的数据
+    Service2-->>Client2: 返回课程详情
 ```
 
-> **结论：**短锁只用于减少重复回源、保护 MySQL，不承担业务强一致职责。
+> **结论：** 短锁只用于减少重复回源、保护 MySQL，不承担业务强一致职责。
 
 ---
 
@@ -357,33 +356,35 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant MySQL as MySQL
     participant Redis as Redis
     participant Worker as 补偿 Worker
 
-    Admin->>Service: 1. 修改课程信息
+    Admin->>Service: 修改课程信息
 
-    Service->>MySQL: 2. 更新版本 19 并写入 Outbox
-    Service->>MySQL: 3. 提交事务
-    MySQL-->>Service: 4. 提交成功
+    Service->>MySQL: 开启事务
+    Service->>MySQL: 更新版本 19 并写入 Outbox
+    Service->>MySQL: 提交事务
+    MySQL-->>Service: 提交成功
 
-    Service->>Redis: 5. 推进栅栏并删除缓存
-    Redis-->>Service: 6. 执行失败
+    Service->>Redis: 推进栅栏并删除缓存
+    Redis-->>Service: 执行失败
 
-    Service-->>Admin: 7. 返回业务更新成功
+    Service-->>Admin: 返回业务更新成功
 
-    Worker->>MySQL: 8. 读取未完成 Outbox
-    MySQL-->>Worker: 9. 返回版本 19 事件
+    Worker->>MySQL: 读取未完成 Outbox
+    MySQL-->>Worker: 返回版本 19 事件
 
-    Worker->>Redis: 10. 重试缓存失效
-    Redis-->>Worker: 11. 返回 APPLIED 或 IGNORED
+    Worker->>Redis: 重试缓存失效
+    Redis-->>Worker: 返回 APPLIED 或 IGNORED
 
-    Worker->>MySQL: 12. 标记 Outbox 完成
+    Worker->>MySQL: 标记 Outbox 完成
 ```
 
-> **结论：**MySQL 提交成功即业务成功，Outbox Worker 负责后续缓存收敛。
+> **结论：** MySQL 提交成功即业务成功，Outbox Worker 负责后续缓存收敛。
 
 ---
 
@@ -393,48 +394,52 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant ReadService as 业务服务 A（读请求）
     participant WriteService as 业务服务 B（写请求）
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>ReadService: 1. 查询课程详情
+    Client->>ReadService: 查询课程详情
 
-    ReadService->>Redis: 2. GET data Key
-    Redis-->>ReadService: 3. 缓存未命中
+    ReadService->>Redis: GET data Key
+    Redis-->>ReadService: 缓存未命中
 
-    ReadService->>Redis: 4. 获取重建锁
-    Redis-->>ReadService: 5. 获取成功
+    ReadService->>Redis: 获取重建锁
+    Redis-->>ReadService: 获取成功
 
-    ReadService->>Redis: 6. 锁内再次读取缓存
-    Redis-->>ReadService: 7. 仍然未命中
+    ReadService->>Redis: 锁内再次读取缓存
+    Redis-->>ReadService: 仍然未命中
 
-    ReadService->>MySQL: 8. 查询课程详情和版本
-    MySQL-->>ReadService: 9. 返回版本 18
+    ReadService->>MySQL: 查询课程详情和版本
+    MySQL-->>ReadService: 返回版本 18
 
-    WriteService->>MySQL: 10. 更新到版本 19 并写入 Outbox
-    MySQL-->>WriteService: 11. 事务提交成功
+    WriteService->>MySQL: 开启事务
+    WriteService->>MySQL: 更新到版本 19 并写入 Outbox
+    MySQL-->>WriteService: 事务提交成功
 
-    WriteService->>Redis: 12. 推进栅栏到 19 并删除缓存
-    Redis-->>WriteService: 13. 返回 APPLIED
+    WriteService->>Redis: 推进栅栏到 19 并删除缓存
+    Redis-->>WriteService: 返回 APPLIED
 
-    ReadService->>Redis: 14. 条件写入版本 18
-    Redis-->>ReadService: 15. 返回 STALE
+    WriteService->>MySQL: 标记Outbox已完成
 
-    ReadService->>MySQL: 16. 重新查询课程详情
-    MySQL-->>ReadService: 17. 返回版本 19
+    ReadService->>Redis: 条件写入版本 18
+    Redis-->>ReadService: 返回 STALE
 
-    ReadService->>Redis: 18. 条件写入版本 19
-    Redis-->>ReadService: 19. 返回 WRITTEN
+    ReadService->>MySQL: 重新查询课程详情
+    MySQL-->>ReadService: 返回版本 19
 
-    ReadService->>Redis: 20. 校验 token 并释放锁
-    Redis-->>ReadService: 21. 释放成功
+    ReadService->>Redis: 条件写入版本 19
+    Redis-->>ReadService: 返回 APPLIED
 
-    ReadService-->>Client: 22. 返回版本 19
+    ReadService->>Redis: 校验 token 并释放锁
+    Redis-->>ReadService: 释放成功
+
+    ReadService-->>Client: 返回版本 19
 ```
 
-> **边界：**版本栅栏不能阻止已经完成的旧读，只能阻止旧缓存长期残留。
+> **边界：** 版本栅栏不能阻止已经完成的旧读，只能阻止旧缓存长期残留。
 
 ---
 
@@ -442,25 +447,26 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>Service: 1. 查询课程详情
+    Client->>Service: 查询课程详情
 
-    Service->>Redis: 2. GET data Key
-    Redis-->>Service: 3. 超时或连接失败
+    Service->>Redis: GET data Key
+    Redis-->>Service: 超时或连接失败
 
-    Service->>Service: 4. 执行熔断和回源并发控制
+    Service->>Service: 执行熔断和回源并发控制
 
-    Service->>MySQL: 5. 受控查询课程详情
-    MySQL-->>Service: 6. 返回课程数据
+    Service->>MySQL: 受控查询课程详情
+    MySQL-->>Service: 返回课程数据
 
-    Service-->>Client: 7. 返回结果
+    Service-->>Client: 返回结果
 ```
 
-> **结论：**Redis 故障时必须限制 MySQL 回源并发，避免数据库雪崩。
+> **结论：** Redis 故障时必须限制 MySQL 回源并发，避免数据库雪崩。
 
 ---
 
@@ -496,7 +502,7 @@ Redis 查询、缓存未命中和 MySQL 回源都由缓存组件内部处理。
 
 ##### 3.2.2.2 Loader 结果语义
 
-Loader 必须明确区分三种结果：
+Loader 三种返回结果：
 
 ```text
 FOUND：返回课程数据
@@ -505,6 +511,8 @@ ERROR：MySQL 超时、连接失败或 SQL 错误
 ```
 
 只有 `NOT_FOUND` 可以写入短期空值；`ERROR` 必须向上抛出，不能转换成课程不存在。
+
+空值缓存只设置较短 TTL，课程创建、恢复或重新发布时主动删除对应空值缓存，并接受极短时间的错误“不存在”。
 
 ---
 
@@ -522,21 +530,22 @@ singleflight 可以合并同一实例内相同 Key 的 Loader 调用；多实例
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Cache as 课程缓存组件
     participant Redis as Redis
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Cache: 2. get(course_id)
-    Cache->>Redis: 3. GET 课程缓存
-    Redis-->>Cache: 4. 返回课程详情
-    Cache->>Cache: 5. 反序列化并记录命中
-    Cache-->>Service: 6. 返回课程对象
-    Service-->>Client: 7. 返回课程详情
+    Client->>Service: 查询课程详情
+    Service->>Cache: get(course_id)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回课程详情
+    Cache->>Cache: 反序列化并记录命中
+    Cache-->>Service: 返回课程对象
+    Service-->>Client: 返回课程详情
 ```
 
-> **结论：**缓存组件直接返回 Redis 数据，业务服务不感知缓存命中细节。
+> **结论：** 缓存组件直接返回 Redis 数据，业务服务不感知缓存命中细节。
 
 ---
 
@@ -544,28 +553,29 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Cache as 课程缓存组件
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Cache: 2. get(course_id)
-    Cache->>Redis: 3. GET 课程缓存
-    Redis-->>Cache: 4. 返回缓存未命中
+    Client->>Service: 查询课程详情
+    Service->>Cache: get(course_id)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回缓存未命中
 
-    Cache->>MySQL: 5. 调用 Loader 查询课程详情
-    MySQL-->>Cache: 6. 返回 FOUND 和课程数据
+    Cache->>MySQL: 调用 Loader 查询课程详情
+    MySQL-->>Cache: 返回 FOUND、课程数据和版本 18
 
-    Cache->>Redis: 7. SET 课程缓存并设置 TTL
-    Redis-->>Cache: 8. 写入成功
+    Cache->>Redis: 按版本栅栏条件写入课程缓存并设置 TTL
+    Redis-->>Cache: 返回 APPLIED
 
-    Cache-->>Service: 9. 返回课程对象
-    Service-->>Client: 10. 返回课程详情
+    Cache-->>Service: 返回课程对象
+    Service-->>Client: 返回课程详情
 ```
 
-> **结论：**缓存组件内部调用 Loader 并写回 Redis；Redis 写回失败时通常仍返回 MySQL 结果。
+> **结论：** 缓存组件内部调用 Loader 并按版本条件写回 Redis；普通写入故障时通常仍返回 MySQL 结果，返回 `STALE` 时必须重新读取或查询，不能返回旧 Loader 结果。
 
 ---
 
@@ -573,28 +583,29 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Cache as 课程缓存组件
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Cache: 2. get(course_id)
-    Cache->>Redis: 3. GET 课程缓存
-    Redis-->>Cache: 4. 返回缓存未命中
+    Client->>Service: 查询课程详情
+    Service->>Cache: get(course_id)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回缓存未命中
 
-    Cache->>MySQL: 5. 调用 Loader 查询课程详情
-    MySQL-->>Cache: 6. 明确返回 NOT_FOUND
+    Cache->>MySQL: 调用 Loader 查询课程详情
+    MySQL-->>Cache: 返回 NOT_FOUND，版本0
 
-    Cache->>Redis: 7. 写入短期空值
-    Redis-->>Cache: 8. 写入成功
+    Cache->>Redis: 按版本栅栏条件写入短期空值
+    Redis-->>Cache: 返回 APPLIED
 
-    Cache-->>Service: 9. 返回 NOT_FOUND
-    Service-->>Client: 10. 返回课程不存在
+    Cache-->>Service: 返回 NOT_FOUND
+    Service-->>Client: 返回课程不存在
 ```
 
-> **结论：**只有 Loader 明确返回 `NOT_FOUND` 时，缓存组件才写入短期空值。
+> **结论：** 只有 Loader 返回带版本的 `NOT_FOUND` 时，缓存组件才按版本条件写入短期空值。
 
 ---
 
@@ -604,6 +615,7 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant ClientA as 用户请求 A
     participant ServiceA as 业务服务 A
     participant ClientB as 用户请求 B
@@ -612,35 +624,35 @@ sequenceDiagram
     participant Redis as Redis
     participant MySQL as MySQL
 
-    ClientA->>ServiceA: 1. 查询课程详情
-    ClientB->>ServiceB: 2. 查询课程详情
+    ClientA->>ServiceA: 查询课程详情
+    ClientB->>ServiceB: 查询课程详情
 
-    ServiceA->>Cache: 3. get(10001)
-    Cache->>Redis: 4. GET 课程缓存
-    Redis-->>Cache: 5. 返回缓存未命中
+    ServiceA->>Cache: get(10001)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回缓存未命中
 
-    ServiceB->>Cache: 6. get(10001)
-    Cache->>Redis: 7. GET 课程缓存
-    Redis-->>Cache: 8. 返回缓存未命中
+    ServiceB->>Cache: get(10001)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回缓存未命中
 
-    Cache->>Cache: 9. 请求 A 创建加载任务
-    Cache->>Cache: 10. 请求 B 等待已有加载任务
+    Cache->>Cache: 请求 A 创建加载任务
+    Cache->>Cache: 请求 B 等待已有加载任务
 
-    Cache->>MySQL: 11. 调用 Loader 查询课程详情
-    MySQL-->>Cache: 12. 返回课程数据
+    Cache->>MySQL: 调用 Loader 查询课程详情
+    MySQL-->>Cache: 返回课程数据和版本
 
-    Cache->>Redis: 13. 写入课程缓存
-    Redis-->>Cache: 14. 写入成功
+    Cache->>Redis: 按版本栅栏条件写入课程缓存
+    Redis-->>Cache: 返回 APPLIED
 
-    Cache-->>ServiceA: 15. 返回课程详情
-    Cache-->>ServiceB: 16. 返回同一加载结果
-    Cache->>Cache: 17. 清理加载任务
+    Cache-->>ServiceA: 返回课程详情
+    Cache-->>ServiceB: 返回同一加载结果
+    Cache->>Cache: 清理加载任务
 
-    ServiceA-->>ClientA: 18. 返回课程详情
-    ServiceB-->>ClientB: 19. 返回课程详情
+    ServiceA-->>ClientA: 返回课程详情
+    ServiceB-->>ClientB: 返回课程详情
 ```
 
-> **结论：**singleflight 只合并同一实例内的回源请求，多实例热点仍需要 Redis 短锁。
+> **结论：** singleflight 只合并同一实例内的回源请求，多实例热点仍需要 Redis 短锁。
 
 ---
 
@@ -648,26 +660,27 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 用户请求
     participant Service as 业务服务
     participant Cache as 课程缓存组件
     participant Redis as Redis
     participant MySQL as MySQL
 
-    Client->>Service: 1. 查询课程详情
-    Service->>Cache: 2. get(course_id)
-    Cache->>Redis: 3. GET 课程缓存
-    Redis-->>Cache: 4. 返回缓存未命中
+    Client->>Service: 查询课程详情
+    Service->>Cache: get(course_id)
+    Cache->>Redis: GET 课程缓存
+    Redis-->>Cache: 返回缓存未命中
 
-    Cache->>MySQL: 5. 调用 Loader 查询课程详情
-    MySQL-->>Cache: 6. 查询超时或执行失败
+    Cache->>MySQL: 调用 Loader 查询课程详情
+    MySQL-->>Cache: 查询超时或执行失败
 
-    Cache->>Cache: 7. 记录错误并清理加载任务
-    Cache-->>Service: 8. 抛出数据源异常
-    Service-->>Client: 9. 返回系统错误
+    Cache->>Cache: 记录错误并清理加载任务
+    Cache-->>Service: 抛出数据源异常
+    Service-->>Client: 返回系统错误
 ```
 
-> **结论：**Loader 失败时返回错误、不写入课程数据或空值，并清理加载任务供后续请求重试。
+> **结论：** Loader 失败时返回错误、不写入课程数据或空值，并清理加载任务供后续请求重试。
 
 ---
 
@@ -681,9 +694,12 @@ sequenceDiagram
 
 > **本节的 Write Through 式同步双写，是由统一写入层先提交 MySQL，再同步尝试更新 Redis；MySQL 提交成功后业务成立，Redis 失败由 Outbox 补偿。**
 
+本节是 MySQL 优先的工程化变体，不等同于由缓存层作为唯一写入口的经典 Write Through。
+
 适合多个写入口需要统一维护同一份缓存，并希望数据更新后尽量立即准备新缓存的场景。
 
 > **接口成功不代表 Redis 一定已经更新，也不表示 Redis 与 MySQL 形成了跨存储原子事务。**
+> **经典 Write Through** 主要描述的是业务只写统一缓存层，由它同步维护缓存和数据库这一职责模型；真正落地时仍必须明确先写谁、谁决定成功、另一边失败怎么补偿。
 
 ---
 
@@ -738,12 +754,12 @@ MySQL 事务内：
 查询 MySQL 最新课程快照
 → 按 data_version 条件写入 Redis
 → 成功则完成 Outbox
-→ 失败由 Worker 重试
+→ 快照查询或 Redis 同步失败则由 Worker 重试
 ```
 
 Outbox 必须与业务数据在同一个 MySQL 事务中提交。
 
-补偿 Worker 必须查询 MySQL 当前最新快照，再按 `data_version` 条件写入 Redis，不能直接使用可能已经过时的事件快照。
+补偿 Worker 必须查询 MySQL 当前最新快照，再按 `data_version` 条件写入 Redis，不能直接使用可能已经过时的事件快照。MySQL 提交后，最新快照查询失败、Redis 写入失败或结果未知都不改变业务成功结果，Outbox 保持待处理。
 
 ---
 
@@ -753,34 +769,35 @@ Outbox 必须与业务数据在同一个 MySQL 事务中提交。
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant Store as 统一写入层
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Admin->>Service: 1. 修改课程基础信息
-    Service->>Store: 2. update(command)
+    Admin->>Service: 修改课程基础信息
+    Service->>Store: update(command)
 
-    Store->>MySQL: 3. 开启事务
-    Store->>MySQL: 4. 校验 request_id 和 expected_version
-    Store->>MySQL: 5. 更新课程并递增 data_version
-    Store->>MySQL: 6. 写入幂等记录和 Outbox
-    Store->>MySQL: 7. 提交事务
-    MySQL-->>Store: 8. 返回业务提交成功
+    Store->>MySQL: 开启事务
+    Store->>MySQL: 校验 request_id 和 expected_version
+    Store->>MySQL: 更新课程并递增 data_version
+    Store->>MySQL: 写入幂等记录和 Outbox
+    Store->>MySQL: 提交事务
+    MySQL-->>Store: 返回业务提交成功
 
-    Store->>MySQL: 9. 查询最新课程快照
-    MySQL-->>Store: 10. 返回版本 19 快照
+    Store->>MySQL: 查询最新课程快照
+    MySQL-->>Store: 返回版本 19 快照
 
-    Store->>Redis: 11. 条件写入版本 19
-    Redis-->>Store: 12. 返回 APPLIED
+    Store->>Redis: 条件写入版本 19
+    Redis-->>Store: 返回 APPLIED
 
-    Store->>MySQL: 13. 标记 Outbox 完成
-    Store-->>Service: 14. 返回 success
-    Service-->>Admin: 15. 返回课程更新成功
+    Store->>MySQL: 标记 Outbox 完成
+    Store-->>Service: 返回 success
+    Service-->>Admin: 返回课程更新成功
 ```
 
-> **结论：**MySQL 提交后业务成立，Redis 条件写入成功时缓存立即可用；后续读取仍由 Cache Aside 或 Read Through 决定。
+> **结论：** MySQL 提交后业务成立，Redis 条件写入成功时缓存立即可用；后续读取仍由 Cache Aside 或 Read Through 决定。
 
 ---
 
@@ -790,24 +807,25 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant Store as 统一写入层
     participant MySQL as MySQL
 
-    Admin->>Service: 1. 修改课程基础信息
-    Service->>Store: 2. update(command)
+    Admin->>Service: 修改课程基础信息
+    Service->>Store: update(command)
 
-    Store->>MySQL: 3. 开启事务
-    Store->>MySQL: 4. 更新课程数据
-    MySQL-->>Store: 5. 更新失败
+    Store->>MySQL: 开启事务
+    Store->>MySQL: 更新课程数据
+    MySQL-->>Store: 更新失败
 
-    Store->>MySQL: 6. 回滚业务数据、幂等记录和 Outbox
-    Store-->>Service: 7. 抛出业务未提交异常
-    Service-->>Admin: 8. 返回课程更新失败
+    Store->>MySQL: 回滚业务数据、幂等记录和 Outbox
+    Store-->>Service: 抛出业务未提交异常
+    Service-->>Admin: 返回课程更新失败
 ```
 
-> **结论：**MySQL 未提交，Redis 不更新，也不产生后续补偿任务。
+> **结论：** MySQL 未提交，Redis 不更新，也不产生后续补偿任务。
 
 ---
 
@@ -815,30 +833,31 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant Store as 统一写入层
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Admin->>Service: 1. 修改课程基础信息
-    Service->>Store: 2. update(command)
+    Admin->>Service: 修改课程基础信息
+    Service->>Store: update(command)
 
-    Store->>MySQL: 3. 提交课程、幂等记录和 Outbox
-    MySQL-->>Store: 4. 返回业务提交成功
+    Store->>MySQL: 提交课程、幂等记录和 Outbox
+    MySQL-->>Store: 返回业务提交成功
 
-    Store->>MySQL: 5. 查询最新课程快照
-    MySQL-->>Store: 6. 返回版本 19
+    Store->>MySQL: 查询最新课程快照
+    MySQL-->>Store: 返回版本 19
 
-    Store->>Redis: 7. 条件写入版本 19
-    Redis-->>Store: 8. 返回失败或结果未知
+    Store->>Redis: 条件写入版本 19
+    Redis-->>Store: 返回失败或结果未知
 
-    Store->>MySQL: 9. 保持 Outbox 为待处理
-    Store-->>Service: 10. 返回业务 success
-    Service-->>Admin: 11. 返回课程更新成功
+    Store->>MySQL: 保持 Outbox 为待处理
+    Store-->>Service: 返回业务 success
+    Service-->>Admin: 返回课程更新成功
 ```
 
-> **结论：**MySQL 已提交则业务成功，Outbox 保持待处理，由 Worker 查询最新快照后补偿 Redis。
+> **结论：** MySQL 已提交则业务成功，Outbox 保持待处理，由 Worker 查询最新快照后补偿 Redis。
 
 ---
 
@@ -846,24 +865,25 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Worker as 补偿 Worker
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Worker->>MySQL: 1. 读取未完成 Outbox
-    MySQL-->>Worker: 2. 返回 course_id 和目标版本
+    Worker->>MySQL: 读取未完成 Outbox
+    MySQL-->>Worker: 返回 course_id 和目标版本
 
-    Worker->>MySQL: 3. 查询当前最新课程快照
-    MySQL-->>Worker: 4. 返回当前版本 19
+    Worker->>MySQL: 查询当前最新课程快照
+    MySQL-->>Worker: 返回当前版本 19
 
-    Worker->>Redis: 5. 条件写入版本 19
-    Redis-->>Worker: 6. 返回 APPLIED
+    Worker->>Redis: 条件写入版本 19
+    Redis-->>Worker: 返回 APPLIED
 
-    Worker->>MySQL: 7. 标记 Outbox 完成
-    MySQL-->>Worker: 8. 标记成功
+    Worker->>MySQL: 标记 Outbox 完成
+    MySQL-->>Worker: 标记成功
 ```
 
-> **结论：**Worker 以 MySQL 最新快照条件写入 Redis；成功或已被更高版本覆盖时完成 Outbox，执行失败时继续重试。
+> **结论：** Worker 以 MySQL 最新快照条件写入 Redis；成功或已被更高版本覆盖时完成 Outbox，执行失败时继续重试。
 
 Redis 条件写入结果统一处理：
 
@@ -881,22 +901,23 @@ ERROR：
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant StoreA as 统一写入层 A
     participant StoreB as 统一写入层 B
     participant Redis as Redis
 
-    StoreB->>Redis: 1. 条件写入版本 20
-    Redis-->>StoreB: 2. 返回 APPLIED
+    StoreB->>Redis: 条件写入版本 20
+    Redis-->>StoreB: 返回 APPLIED
 
-    StoreB->>StoreB: 3. 结束版本 20 同步任务
+    StoreB->>StoreB: 结束版本 20 同步任务
 
-    StoreA->>Redis: 4. 延迟写入版本 19
-    Redis-->>StoreA: 5. 当前版本为 20，返回 STALE
+    StoreA->>Redis: 延迟写入版本 19
+    Redis-->>StoreA: 当前版本为 20，返回 STALE
 
-    StoreA->>StoreA: 6. 将版本 19 事件标记为已被高版本覆盖
+    StoreA->>StoreA: 将版本 19 事件标记为已被高版本覆盖
 ```
 
-> **结论：**`data_version` 条件写入阻止低版本覆盖高版本，缓存不会因网络到达顺序发生版本倒退。
+> **结论：** `data_version` 条件写入阻止低版本覆盖高版本，缓存不会因网络到达顺序发生版本倒退。
 
 ---
 
@@ -944,7 +965,7 @@ producer_id + report_id
 * Redis 返回结果未知：使用相同的 `producer_id + report_id + request_hash` 重试。
 * MySQL 对 `(producer_id, report_id)` 建立唯一约束，作为最终幂等保障。
 
-脚本必须在首次写入前完成参数和 Key 类型校验。
+脚本必须在首次写入前完成参数和 Key 类型校验。Redis Cluster 环境下，同一次脚本涉及的去重、版本、Stream 和实时状态 Key 必须使用相同 Hash Tag 落在同一 Slot；否则应拆分脚本或调整 Key 设计。
 
 > **Redis 原子执行只能保证没有其他命令穿插，不表示脚本报错后会自动回滚已经执行的写操作。**
 
@@ -965,7 +986,7 @@ version_epoch + version_sequence
 → epoch 相同再比较 version_sequence
 ```
 
-灾难恢复或序列重新生成前，必须先在 MySQL 中持久化提升 `version_epoch`，再开放新的写入。
+`version_epoch` 和 sequence 生成器元数据不能跟随实时状态一起过期。版本元数据丢失或 sequence 需要重置时，必须先在 MySQL 中持久化提升 `version_epoch`，再开放新的写入。
 
 数据分为两类：
 
@@ -983,12 +1004,12 @@ Worker 的处理顺序：
 ```text
 有限批量读取
 → 合并可覆盖状态
-→ MySQL 幂等批量写入
+→ MySQL 更新最高版本状态并记录本批全部 report_id
 → MySQL 事务提交成功
 → XACK
 ```
 
-MySQL 事务失败时不能执行 `XACK`，否则消息可能已经完成消费确认，但业务数据并未持久化。
+Worker 可以只用最高版本更新状态，但必须在同一个 MySQL 事务中记录本批全部 `report_id`。MySQL 事务失败时不能执行 `XACK`，否则消息可能已经完成消费确认，但业务数据并未持久化。
 
 ---
 
@@ -999,9 +1020,12 @@ MySQL 连续失败时，Worker 应暂停继续读取新消息，让 Stream lag �
 消息只能在满足以下条件后清理：
 
 ```text
-已经 ACK
-+ 超过故障恢复窗口
+单消费组：该组已经 ACK
+多消费组：所有消费组均已 ACK
+共同条件：超过故障恢复窗口
 ```
+
+Redis 8.2 及以上可使用支持 `ACKED` 语义的清理策略，避免删除仍被其他消费组引用的消息。
 
 Redis 保存的是尚未落库的数据，因此 Redis 故障可能造成明确的 RPO 损失。
 
@@ -1015,25 +1039,26 @@ Redis 保存的是尚未落库的数据，因此 Redis 故障可能造成明确�
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 播放器
     participant Service as 业务服务
     participant Redis as Redis
 
-    Client->>Service: 1. 上报进度、producer_id、report_id 和 request_hash
-    Service->>Service: 2. 校验用户、课程和请求参数
+    Client->>Service: 上报进度、producer_id、report_id 和 request_hash
+    Service->>Service: 校验用户、课程和请求参数
 
-    Service->>Redis: 3. 执行进度写入脚本
-    Redis->>Redis: 4. 预校验 Key 类型和请求字段
-    Redis->>Redis: 5. 校验 report_id 或返回原结果
-    Redis->>Redis: 6. 生成版本 2:128
-    Redis->>Redis: 7. XADD 待落库事件
-    Redis->>Redis: 8. 更新实时状态和去重结果
-    Redis-->>Service: 9. 返回版本 2:128
+    Service->>Redis: 执行进度写入脚本
+    Redis->>Redis: 预校验 Key 类型和请求字段
+    Redis->>Redis: 校验 report_id 或返回原结果
+    Redis->>Redis: 生成版本 2:128
+    Redis->>Redis: XADD 待落库事件
+    Redis->>Redis: 更新实时状态和去重结果
+    Redis-->>Service: 返回版本 2:128
 
-    Service-->>Client: 10. 返回 accepted 和版本 2:128
+    Service-->>Client: 返回 accepted 和版本 2:128
 ```
 
-> **结论：**`accepted` 只表示 Redis 已记录实时状态和待落库事件，MySQL 此时可能仍然是旧版本。
+> **结论：** `accepted` 只表示 Redis 已记录实时状态和待落库事件，MySQL 此时可能仍然是旧版本。
 
 ---
 
@@ -1041,25 +1066,26 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Worker as 回写 Worker
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
-    Worker->>Worker: 1. 检查 MySQL 熔断状态
-    Worker->>Redis: 2. XREADGROUP 读取有限批次
-    Redis-->>Worker: 3. 返回事件并进入 Pending
+    Worker->>Worker: 检查 MySQL 熔断状态
+    Worker->>Redis: XREADGROUP 读取有限批次
+    Redis-->>Worker: 返回事件并进入 Pending
 
-    Worker->>Worker: 4. 合并可覆盖状态的最高版本
-    Worker->>MySQL: 5. 开启事务并幂等批量写入
-    MySQL-->>Worker: 6. 事务提交成功
+    Worker->>Worker: 合并可覆盖状态的最高版本
+    Worker->>MySQL: 更新最高版本状态并记录本批全部 report_id
+    MySQL-->>Worker: 事务提交成功
 
-    Worker->>Redis: 7. XACK 已持久化事件
-    Redis-->>Worker: 8. 返回 ACK 数量
+    Worker->>Redis: XACK 已持久化事件
+    Redis-->>Worker: 返回 ACK 数量
 
-    Worker->>Worker: 9. 记录批次处理结果
+    Worker->>Worker: 记录批次处理结果
 ```
 
-> **结论：**Worker 只合并可覆盖状态，并且必须在 MySQL 提交成功后才能执行 `XACK`。
+> **结论：** Worker 只合并可覆盖状态，但需记录本批全部 `report_id`，并且必须在 MySQL 提交成功后才能执行 `XACK`。
 
 ---
 
@@ -1069,22 +1095,23 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Worker as 回写 Worker
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
-    Worker->>Redis: 1. XREADGROUP 读取有限批次
-    Redis-->>Worker: 2. 事件进入 Pending
+    Worker->>Redis: XREADGROUP 读取有限批次
+    Redis-->>Worker: 事件进入 Pending
 
-    Worker->>MySQL: 3. 幂等批量写入进度
-    MySQL-->>Worker: 4. 事务失败并回滚
+    Worker->>MySQL: 幂等批量写入进度
+    MySQL-->>Worker: 事务失败并回滚
 
-    Worker->>Worker: 5. 不执行 XACK
-    Worker->>Worker: 6. 增加失败计数并退避
-    Worker->>Worker: 7. 达到阈值后打开 MySQL 熔断器
+    Worker->>Worker: 不执行 XACK
+    Worker->>Worker: 增加失败计数并退避
+    Worker->>Worker: 达到阈值后打开 MySQL 熔断器
 ```
 
-> **结论：**MySQL 事务失败时不能 `XACK`，消息保留在 Pending，等待数据库恢复后重新处理。
+> **结论：** MySQL 事务失败时不能 `XACK`，消息保留在 Pending，等待数据库恢复后重新处理。
 
 ---
 
@@ -1092,30 +1119,31 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant WorkerA as Worker A
     participant WorkerB as Worker B
     participant Redis as Redis Stream
     participant MySQL as MySQL
 
-    WorkerA->>Redis: 1. XREADGROUP 读取事件
-    Redis-->>WorkerA: 2. 事件进入 Pending
+    WorkerA->>Redis: XREADGROUP 读取事件
+    Redis-->>WorkerA: 事件进入 Pending
 
-    WorkerA->>MySQL: 3. 按 report_id 幂等写入版本 2:128
-    MySQL-->>WorkerA: 4. 事务提交成功
+    WorkerA->>MySQL: 按 report_id 幂等写入版本 2:128
+    MySQL-->>WorkerA: 事务提交成功
 
-    WorkerA--xWorkerA: 5. ACK 前进程崩溃
+    WorkerA--xWorkerA: ACK 前进程崩溃
 
-    WorkerB->>Redis: 6. XAUTOCLAIM 接管超时事件
-    Redis-->>WorkerB: 7. 返回事件
+    WorkerB->>Redis: XAUTOCLAIM 接管超时事件
+    Redis-->>WorkerB: 返回事件
 
-    WorkerB->>MySQL: 8. 按相同 report_id 再次写入版本 2:128
-    MySQL-->>WorkerB: 9. 命中唯一约束并返回原结果
+    WorkerB->>MySQL: 按相同 report_id 再次写入版本 2:128
+    MySQL-->>WorkerB: 命中唯一约束并返回原结果
 
-    WorkerB->>Redis: 10. XACK 事件
-    Redis-->>WorkerB: 11. ACK 成功
+    WorkerB->>Redis: XACK 事件
+    Redis-->>WorkerB: ACK 成功
 ```
 
-> **结论：**事件可能被重复处理，MySQL 唯一约束保证不会产生第二次业务结果，接管 Worker 最终完成 `XACK`。
+> **结论：** 事件可能被重复处理，MySQL 唯一约束保证不会产生第二次业务结果，接管 Worker 最终完成 `XACK`。
 
 ---
 
@@ -1123,28 +1151,29 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Worker as 回写 Worker
     participant Redis as Redis Stream
     participant MySQL as MySQL
     participant Control as 流量控制
 
-    Worker->>MySQL: 1. 当前在途批次写入
-    MySQL-->>Worker: 2. 数据库持续不可用
+    Worker->>MySQL: 当前在途批次写入
+    MySQL-->>Worker: 数据库持续不可用
 
-    Worker->>Worker: 3. 打开 MySQL 熔断器
-    Worker->>Worker: 4. 暂停读取新的 Stream 消息
+    Worker->>Worker: 打开 MySQL 熔断器
+    Worker->>Worker: 暂停读取新的 Stream 消息
 
-    Worker->>Redis: 5. 查询 lag、Pending 和内存
-    Redis-->>Worker: 6. 返回积压状态
+    Worker->>Redis: 查询 lag、Pending 和内存
+    Redis-->>Worker: 返回积压状态
 
-    Worker->>Control: 7. 上报积压和容量风险
-    Control->>Control: 8. 告警、扩容或限制新写入
+    Worker->>Control: 上报积压和容量风险
+    Control->>Control: 告警、扩容或限制新写入
 
-    MySQL-->>Worker: 9. 数据库恢复
-    Worker->>Worker: 10. 关闭熔断并恢复有限批量消费
+    MySQL-->>Worker: 数据库恢复
+    Worker->>Worker: 关闭熔断并恢复有限批量消费
 ```
 
-> **结论：**MySQL 持续故障时暂停读取新消息，容量接近阈值时限制前台写入，数据库恢复后再逐步消费积压。
+> **结论：** MySQL 持续故障时暂停读取新消息，容量接近阈值时限制前台写入，数据库恢复后再逐步消费积压。
 
 ---
 
@@ -1152,33 +1181,34 @@ sequenceDiagram
 
 ```mermaid
 sequenceDiagram
+    autonumber
     participant Client as 播放器
     participant Service as 业务服务
     participant Redis as Redis
     participant Worker as 回写 Worker
     participant MySQL as MySQL
 
-    Client->>Service: 1. 上报学习进度
-    Service->>Redis: 2. 写入实时状态和待落库事件
-    Redis-->>Service: 3. 返回写入成功
-    Service-->>Client: 4. 返回 accepted
+    Client->>Service: 上报学习进度
+    Service->>Redis: 写入实时状态和待落库事件
+    Redis-->>Service: 返回写入成功
+    Service-->>Client: 返回 accepted
 
-    Redis--xRedis: 5. 数据可靠持久化前发生不可恢复故障
+    Redis--xRedis: 数据可靠持久化前发生不可恢复故障
 
-    Worker->>Redis: 6. 尝试读取待落库事件
-    Redis-->>Worker: 7. 最新事件已经不存在
+    Worker->>Redis: 尝试读取待落库事件
+    Redis-->>Worker: 最新事件已经不存在
 
-    Worker->>MySQL: 8. 查询持久化进度
-    MySQL-->>Worker: 9. 只返回旧版本 2:127
+    Worker->>MySQL: 查询持久化进度
+    MySQL-->>Worker: 只返回旧版本 2:127
 
-    Worker->>Worker: 10. 记录不可自动恢复告警
-    Worker->>Service: 11. 标记需要客户端重传
+    Worker->>Worker: 记录不可自动恢复告警
+    Worker->>Service: 标记需要客户端重传
 
-    Client->>Service: 12. 下次恢复时查询进度
-    Service-->>Client: 13. 返回旧版本并请求使用原 report_id 重传
+    Client->>Service: 下次恢复时查询进度
+    Service-->>Client: 返回旧版本并请求使用原 report_id 重传
 ```
 
-> **结论：**Redis 丢失尚未落库的事件时，服务端可能无法自动恢复，只能依赖客户端重传、其他副本或备份，这就是 Write Behind 的 RPO 代价。
+> **结论：** Redis 丢失尚未落库的事件时，服务端可能无法自动恢复，只能依赖客户端重传、其他副本或备份，这就是 Write Behind 的 RPO 代价。
 
 ---
 
@@ -1189,12 +1219,12 @@ sequenceDiagram
 
 ## 4. 横向对比
 
-| 模式 | 主要解决路径 | 缓存治理者 | 长期权威数据 | 请求返回时 MySQL 是否最新 | 核心风险 | 典型场景 |
+| 模式 | 主要解决路径 | 缓存治理者 | 长期权威数据 | 前台写入返回时 MySQL 是否已提交 | 核心风险 | 典型场景 |
 | --- | --- | --- | --- | --- | --- | --- |
-| Cache Aside | 读为主，也定义更新后失效 | 业务服务 | MySQL | 是 | 击穿、失效失败、短暂旧数据 | 课程详情等读多写少数据 |
-| Read Through | 读 | 缓存组件 | MySQL | 是 | 隐藏回源耗时、组件过度抽象 | 多个模块需要统一缓存治理 |
+| Cache Aside | 读为主，也定义更新后失效 | 业务服务 | MySQL | 是（本例更新路径） | 击穿、失效失败、短暂旧数据 | 课程详情等读多写少数据 |
+| Read Through | 读 | 缓存组件 | MySQL | 不由读取模式定义 | 隐藏回源耗时、组件过度抽象 | 多个模块需要统一缓存治理 |
 | Write Through 式同步双写（MySQL 优先） | 写 | 统一写入层 | MySQL | 是 | Redis 与 MySQL 部分成功、写延迟增加 | 多个写入口需要统一治理，并希望尽量同步准备缓存 |
-| Write Behind | 写 | Redis + Worker | MySQL 保存长期结果，Redis 保存实时状态 | 不一定 | 未落库数据丢失、重复、乱序和积压 | 高频且允许延迟落库的覆盖型状态 |
+| Write Behind | 写 | Redis + Worker | MySQL 保存长期结果，Redis 保存实时状态 | 否 | 未落库数据丢失、重复、乱序和积压 | 高频且允许延迟落库的覆盖型状态 |
 
 ## 5. 最终结论
 
