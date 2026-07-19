@@ -690,22 +690,65 @@ sequenceDiagram
 
 ### 3.3 Write Through 式同步双写（MySQL 优先）
 
-#### 3.3.1 定义与适用场景
+#### 3.3.1 它解决什么问题
 
-> **本节的 Write Through 式同步双写，是由统一写入层先提交 MySQL，再同步尝试更新 Redis；MySQL 提交成功后业务成立，Redis 失败由 Outbox 补偿。**
+课程信息可能被后台管理、运营工具、批量任务等多个入口修改。
 
-本节是 MySQL 优先的工程化变体，不等同于由缓存层作为唯一写入口的经典 Write Through。
+如果每个入口都自行维护 Redis，容易出现：
 
-适合多个写入口需要统一维护同一份缓存，并希望数据更新后尽量立即准备新缓存的场景。
+* 某个入口更新 MySQL 后遗漏缓存处理。
+* 并发和乱序导致旧数据覆盖新数据。
+* Redis 更新失败后缺少统一补偿。
 
-> **接口成功不代表 Redis 一定已经更新，也不表示 Redis 与 MySQL 形成了跨存储原子事务。**
-> **经典 Write Through** 主要描述的是业务只写统一缓存层，由它同步维护缓存和数据库这一职责模型；真正落地时仍必须明确先写谁、谁决定成功、另一边失败怎么补偿。
+因此，可以增加统一写入层，让所有课程修改都经过同一套写入流程。
+
+> **Write Through 的核心是统一写入口；本节采用 MySQL 优先的工程化实现。**
+
+```text
+统一写入层先提交 MySQL
+→ 再同步尝试更新 Redis
+→ Redis 失败时由 Outbox Worker 补偿
+```
+
+适合多个写入口需要统一维护同一份缓存，并希望数据修改后尽量立即准备好新缓存的场景。
+
+> **MySQL 是唯一事实源，Redis 是可以重新构建的性能副本。**
 
 ---
 
-#### 3.3.2 三个核心规则
+#### 3.3.2 当前方案如何运行
 
-##### 3.3.2.1 MySQL 决定业务结果
+##### 3.3.2.1 基础写入流程
+
+```mermaid
+flowchart LR
+    Admin[后台管理员]
+    Service[业务服务]
+    Store[统一写入层]
+    MySQL[MySQL]
+    Redis[Redis]
+
+    Admin -->|1. 获取课程和当前版本| Service
+    Service -->|2. 查询课程数据| MySQL
+    MySQL -->|3. 返回课程和版本| Service
+    Service -->|4. 返回编辑数据| Admin
+
+    Admin -->|5. 携带 expected_version 提交修改| Service
+    Service -->|6. 调用统一写入层| Store
+    Store -->|7. 条件更新并提交| MySQL
+    MySQL -->|8. 提交成功| Store
+    Store -->|9. 查询最新快照| MySQL
+    MySQL -->|10. 返回最新版本| Store
+    Store -->|11. 条件写入缓存| Redis
+    Store -->|12. 返回业务结果| Service
+    Service -->|13. 返回结果| Admin
+```
+
+> **MySQL 提交决定业务结果，Redis 更新失败不回滚业务，由 Outbox 后续补偿。**
+
+---
+
+##### 3.3.2.2 业务结果与 Outbox 补偿
 
 ```text
 MySQL 未提交：
@@ -718,31 +761,10 @@ Redis 同步失败：
     业务仍然成功，进入补偿
 ```
 
-MySQL 是唯一事实源，不能因为 Redis 更新失败回滚已经提交的业务结果。
-
----
-
-##### 3.3.2.2 三类幂等与版本机制
-
-三类标识分别解决不同问题：
-
-* `request_id`：防止客户端重试产生重复业务结果。
-* `expected_version`：防止并发请求覆盖已经更新的 MySQL 数据。
-* `data_version`：防止 Redis 低版本覆盖高版本。
-
-相同 `request_id` 重试时返回第一次处理结果；`expected_version` 冲突时直接拒绝，二者都不能再次更新 Redis。
-
-> **`expected_version` 解决 MySQL 业务并发，`data_version` 解决 Redis 同步乱序。**
-
----
-
-##### 3.3.2.3 Redis 条件写入与 Outbox 补偿
-
-MySQL 事务内：
+为了避免 MySQL 已经更新，但 Redis 更新任务永久丢失，需要在同一个 MySQL 事务中执行：
 
 ```text
-更新课程数据
-+ 记录 request_id
+按 expected_version 更新课程
 + 递增 data_version
 + 写入 Outbox
 → 提交事务
@@ -754,176 +776,277 @@ MySQL 事务内：
 查询 MySQL 最新课程快照
 → 按 data_version 条件写入 Redis
 → 成功则完成 Outbox
-→ 快照查询或 Redis 同步失败则由 Worker 重试
+→ 失败则由 Worker 重试
 ```
 
-Outbox 必须与业务数据在同一个 MySQL 事务中提交。
+补偿 Worker 必须查询 MySQL 当前最新快照，不能直接写入可能已经过时的事件数据。
 
-补偿 Worker 必须查询 MySQL 当前最新快照，再按 `data_version` 条件写入 Redis，不能直接使用可能已经过时的事件快照。MySQL 提交后，最新快照查询失败、Redis 写入失败或结果未知都不改变业务成功结果，Outbox 保持待处理。
+> **Outbox 不保证 MySQL 和 Redis 原子提交，只保证 Redis 更新失败后可以继续补偿。**
 
 ---
 
-#### 3.3.3 正常路径
+#### 3.3.3 两类版本机制
 
-##### 3.3.3.1 MySQL 与 Redis 同步成功
+##### 3.3.3.1 expected_version：保护 MySQL
+
+管理员打开编辑页面时，后端返回课程数据和当前版本：
+
+```text
+course_id = 1001
+course_name = Redis 入门
+data_version = 18
+```
+
+前端提交修改时携带：
+
+```text
+expected_version = 18
+```
+
+它表示：
+
+> 我是在版本 18 的基础上修改；如果当前已经不是版本 18，就不要继续更新。
+
+MySQL 通过条件更新实现：
+
+```sql
+UPDATE course
+SET course_name = 'Redis 工程实践',
+    data_version = data_version + 1
+WHERE course_id = 1001
+  AND data_version = 18;
+```
+
+更新成功表示版本匹配；影响行数为 `0` 表示数据已经被其他请求修改。
+
+相同请求重复提交时，也会因为携带旧版本而被拒绝，但系统无法区分第一次请求是否已经成功，只能返回版本冲突。
+
+> **边界：** 课程修改允许重复请求返回版本冲突，因此不引入 `request_id`；支付、下单、发奖等必须识别同一请求并返回原结果的业务，仍需要持久化的 `request_id` 幂等记录。
+
+---
+
+##### 3.3.3.2 data_version：保护 Redis
+
+MySQL 每次更新成功后都会产生新的 `data_version`：
+
+```text
+第一次更新：版本 18 → 19
+第二次更新：版本 19 → 20
+```
+
+由于网络延迟，Redis 更新请求可能乱序到达：
+
+```text
+版本 20 先到达 Redis
+版本 19 后到达 Redis
+```
+
+Redis 按版本条件写入，低版本请求返回 `STALE`，不能覆盖已经写入的高版本。
+
+> **data_version 防止 Redis 因请求乱序发生版本倒退。**
+
+---
+
+#### 3.3.4 正常路径
+
+##### 3.3.4.1 MySQL 与 Redis 同步成功
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant Store as 统一写入层
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Admin->>Service: 修改课程基础信息
+    Note over MySQL,Redis: 初始课程版本为 18
+
+    Admin->>Service: 打开课程编辑页面
+    Service->>MySQL: 查询课程详情和 data_version
+    MySQL-->>Service: 返回课程数据，data_version=18
+    Service-->>Admin: 返回课程数据和版本 18
+
+    Note over Admin: 管理员基于版本 18 编辑课程
+
+    Admin->>Service: 提交修改<br/>expected_version=18
     Service->>Store: update(command)
 
     Store->>MySQL: 开启事务
-    Store->>MySQL: 校验 request_id 和 expected_version
-    Store->>MySQL: 更新课程并递增 data_version
-    Store->>MySQL: 写入幂等记录和 Outbox
-    Store->>MySQL: 提交事务
-    MySQL-->>Store: 返回业务提交成功
+    Store->>MySQL: 按版本 18 更新课程<br/>递增版本并写入 Outbox
+    MySQL-->>Store: 事务提交成功，data_version=19
 
-    Store->>MySQL: 查询最新课程快照
+    Store->>MySQL: 查询当前最新课程快照
     MySQL-->>Store: 返回版本 19 快照
 
     Store->>Redis: 条件写入版本 19
     Redis-->>Store: 返回 APPLIED
 
     Store->>MySQL: 标记 Outbox 完成
-    Store-->>Service: 返回 success
+    Store-->>Service: 返回 success 和版本 19
     Service-->>Admin: 返回课程更新成功
 ```
 
-> **结论：** MySQL 提交后业务成立，Redis 条件写入成功时缓存立即可用；后续读取仍由 Cache Aside 或 Read Through 决定。
+> **结论：** 管理员携带读取到的版本提交修改；MySQL 更新成功后，统一写入层同步准备新缓存。
 
 ---
 
-#### 3.3.4 核心异常路径
+#### 3.3.5 核心异常路径
 
-##### 3.3.4.1 MySQL 更新失败
+##### 3.3.5.1 MySQL 未提交
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant Admin as 后台管理员
-    participant Service as 业务服务
-    participant Store as 统一写入层
-    participant MySQL as MySQL
 
-    Admin->>Service: 修改课程基础信息
-    Service->>Store: update(command)
-
-    Store->>MySQL: 开启事务
-    Store->>MySQL: 更新课程数据
-    MySQL-->>Store: 更新失败
-
-    Store->>MySQL: 回滚业务数据、幂等记录和 Outbox
-    Store-->>Service: 抛出业务未提交异常
-    Service-->>Admin: 返回课程更新失败
-```
-
-> **结论：** MySQL 未提交，Redis 不更新，也不产生后续补偿任务。
-
----
-
-##### 3.3.4.2 MySQL 已提交，但 Redis 同步失败
-
-```mermaid
-sequenceDiagram
-    autonumber
     participant Admin as 后台管理员
     participant Service as 业务服务
     participant Store as 统一写入层
     participant MySQL as MySQL
     participant Redis as Redis
 
-    Admin->>Service: 修改课程基础信息
+    Admin->>Service: 提交课程修改
+    Service->>Store: update(command)
+    Store->>MySQL: 按 expected_version 条件更新<br/>并写入 Outbox
+
+    alt expected_version 冲突
+        MySQL-->>Store: 影响行数为 0
+        Store-->>Service: 返回版本冲突
+        Service-->>Admin: 提示刷新后重新编辑
+    else MySQL 执行或提交失败
+        MySQL-->>Store: 事务失败
+        Store->>MySQL: 回滚课程数据和 Outbox
+        Store-->>Service: 返回更新失败
+        Service-->>Admin: 返回课程更新失败
+    end
+
+    Note over Store,Redis: MySQL 未提交，不更新 Redis
+```
+
+> **结论：** MySQL 未提交时业务失败，Redis 不更新，也不产生后续补偿任务。
+
+---
+
+##### 3.3.5.2 MySQL 已提交，但 Redis 同步失败
+
+```mermaid
+sequenceDiagram
+    autonumber
+
+    participant Admin as 后台管理员
+    participant Service as 业务服务
+    participant Store as 统一写入层
+    participant MySQL as MySQL
+    participant Redis as Redis
+
+    Admin->>Service: 提交课程修改
     Service->>Store: update(command)
 
-    Store->>MySQL: 提交课程、幂等记录和 Outbox
-    MySQL-->>Store: 返回业务提交成功
+    Store->>MySQL: 更新课程、递增版本并写入 Outbox
+    MySQL-->>Store: 事务提交成功
 
     Store->>MySQL: 查询最新课程快照
     MySQL-->>Store: 返回版本 19
 
     Store->>Redis: 条件写入版本 19
-    Redis-->>Store: 返回失败或结果未知
+    Redis-->>Store: 返回 ERROR 或结果未知
 
     Store->>MySQL: 保持 Outbox 为待处理
-    Store-->>Service: 返回业务 success
+    Store-->>Service: 返回业务成功
     Service-->>Admin: 返回课程更新成功
 ```
 
-> **结论：** MySQL 已提交则业务成功，Outbox 保持待处理，由 Worker 查询最新快照后补偿 Redis。
+查询最新快照失败、Redis 超时、连接失败或执行结果未知时，都应保留 Outbox。
+
+> **结论：** MySQL 已提交则业务成功，Redis 同步失败由 Worker 后续补偿。
 
 ---
 
-##### 3.3.4.3 Worker 完成缓存补偿
+##### 3.3.5.3 Worker 完成缓存补偿
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant Worker as 补偿 Worker
     participant MySQL as MySQL
     participant Redis as Redis
 
     Worker->>MySQL: 读取未完成 Outbox
-    MySQL-->>Worker: 返回 course_id 和目标版本
+    MySQL-->>Worker: 返回 course_id
 
     Worker->>MySQL: 查询当前最新课程快照
-    MySQL-->>Worker: 返回当前版本 19
+    MySQL-->>Worker: 返回当前最新版本
 
-    Worker->>Redis: 条件写入版本 19
-    Redis-->>Worker: 返回 APPLIED
+    Worker->>Redis: 按最新 data_version 条件写入
+    Redis-->>Worker: 返回写入结果
 
-    Worker->>MySQL: 标记 Outbox 完成
-    MySQL-->>Worker: 标记成功
+    alt APPLIED、IDEMPOTENT 或 STALE
+        Worker->>MySQL: 标记 Outbox 完成
+    else ERROR
+        Worker->>Worker: 保持待处理并退避重试
+    end
 ```
-
-> **结论：** Worker 以 MySQL 最新快照条件写入 Redis；成功或已被更高版本覆盖时完成 Outbox，执行失败时继续重试。
-
-Redis 条件写入结果统一处理：
 
 ```text
-APPLIED、IDEMPOTENT、STALE：
-    结束当前 Outbox 事件
+APPLIED / IDEMPOTENT / STALE：
+    完成 Outbox
 
 ERROR：
-    保持待处理并退避重试
+    保持待处理并重试
 ```
+
+例如，Outbox 原本对应版本 19，但 MySQL 当前已经更新到版本 20，Worker 应直接写入版本 20。
+
+> **结论：** Worker 以 MySQL 当前最新数据为准，使 Redis 最终收敛到最新版本。
 
 ---
 
-##### 3.3.4.4 Redis 同步请求乱序到达
+##### 3.3.5.4 Redis 同步请求乱序到达
 
 ```mermaid
 sequenceDiagram
     autonumber
+
     participant StoreA as 统一写入层 A
     participant StoreB as 统一写入层 B
+    participant MySQL as MySQL
     participant Redis as Redis
+
+    Note over MySQL,Redis: 初始版本为 18
+
+    StoreA->>MySQL: 更新课程，版本 18 变为 19
+    MySQL-->>StoreA: 事务提交成功
+
+    Note over StoreA,Redis: 版本 19 的 Redis 请求发生延迟
+
+    StoreB->>MySQL: 再次更新，版本 19 变为 20
+    MySQL-->>StoreB: 事务提交成功
 
     StoreB->>Redis: 条件写入版本 20
     Redis-->>StoreB: 返回 APPLIED
 
-    StoreB->>StoreB: 结束版本 20 同步任务
-
     StoreA->>Redis: 延迟写入版本 19
     Redis-->>StoreA: 当前版本为 20，返回 STALE
 
-    StoreA->>StoreA: 将版本 19 事件标记为已被高版本覆盖
+    StoreA->>MySQL: 标记版本 19 的 Outbox 完成
 ```
 
-> **结论：** `data_version` 条件写入阻止低版本覆盖高版本，缓存不会因网络到达顺序发生版本倒退。
+`STALE` 表示当前任务已经被更高版本覆盖，不需要继续重试。
+
+> **结论：** `data_version` 阻止 Redis 因请求乱序发生版本倒退。
 
 ---
 
-#### 3.3.5 最终记忆
+#### 3.3.6 最终记忆
 
-> **本节采用 MySQL 优先的同步双写：MySQL 提交决定业务结果，Redis 按 `data_version` 条件更新，失败由 Outbox Worker 补偿。**
+> **统一写入层先提交 MySQL，再更新 Redis；Redis 失败由 Outbox 补偿。**
+
+```text
+expected_version：保护 MySQL
+data_version：保护 Redis
+```
 
 ### 3.4 Write Behind（异步回写）
 
