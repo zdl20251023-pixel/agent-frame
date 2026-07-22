@@ -7,6 +7,7 @@
 ## 一、现状痛点
 
 当前 `tableId` 格式：`ipHex(8位) + portHex(4位) + "_" + snowflakeId`，例如：
+
 ```
 0a2a00e80fa0_115147576394661893
 └──────────┘
@@ -14,6 +15,7 @@ IP:Port 编码（建桌时 Pod IP，写入 MySQL 后永久固化）
 ```
 
 问题链：
+
 1. 复式比赛 `create_table` → 选 Game 服 → `randTableId()` 把当前 Pod IP 烧入 tableId → 写入 MySQL
 2. Pod 重启 → 新 IP 分配 → 旧 IP 不再可达
 3. 后续重连 / 操作 → 从 MySQL 读旧 tableId → decode 出旧 IP → RPC 超时或拒绝连接 → 用户永久卡死
@@ -33,6 +35,7 @@ K8s Service 的 ClusterIP 在 Service 对象存续期间永不改变。Pod 重�
 ### 改造内容
 
 **运维侧（K8s）**：
+
 - 为每个 Game Pod 创建专属 Service（可通过 StatefulSet + Headless Service 实现每 Pod 固定 DNS，或直接创建 ClusterIP Service）
 - 将 Service ClusterIP 以 `SERVICE_IP` 环境变量注入对应 Pod
 
@@ -41,9 +44,10 @@ K8s Service 的 ClusterIP 在 Service 对象存续期间永不改变。Pod 重�
 ```typescript
 // src/feature/game_server/session_manager.ts  L1764
 // 修改前
-const pod_ip: string = process.env.POD_IP || '127.0.0.1'
+const pod_ip: string = process.env.POD_IP || "127.0.0.1";
 // 修改后
-const pod_ip: string = process.env.SERVICE_IP || process.env.POD_IP || '127.0.0.1'
+const pod_ip: string =
+  process.env.SERVICE_IP || process.env.POD_IP || "127.0.0.1";
 ```
 
 ### 效果
@@ -56,11 +60,11 @@ Pod 重启：ClusterIP 不变，K8s 自动导流到新 Pod
 
 ### 优劣
 
-| 优点 | 缺点 |
-|------|------|
-| 代码改动仅 1 行 | 需要 K8s 运维配合配置 |
-| tableId / 数据库无需任何变化 | ClusterIP 需要手动注入到 Pod env（K8s 不原生支持 fieldRef 获取 Service IP）|
-| 从根本上解决问题，无任何 fallback 逻辑 | 强依赖 K8s 特性，本地开发需要模拟 |
+| 优点                                   | 缺点                                                                        |
+| -------------------------------------- | --------------------------------------------------------------------------- |
+| 代码改动仅 1 行                        | 需要 K8s 运维配合配置                                                       |
+| tableId / 数据库无需任何变化           | ClusterIP 需要手动注入到 Pod env（K8s 不原生支持 fieldRef 获取 Service IP） |
+| 从根本上解决问题，无任何 fallback 逻辑 | 强依赖 K8s 特性，本地开发需要模拟                                           |
 
 ---
 
@@ -90,14 +94,14 @@ Pod 重启：ClusterIP 不变，K8s 自动导流到新 Pod
 
 只需 `game:serverList` 一张表，用于建桌和重建时选服：
 
-| 项目 | 值 |
-|------|-----|
-| **Key** | `game:serverList`（固定，全局唯一）|
-| **类型** | Hash（字段级 TTL，需 Redis 7.4+ `hsetex` 支持）|
+| 项目      | 值                                                    |
+| --------- | ----------------------------------------------------- |
+| **Key**   | `game:serverList`（固定，全局唯一）                   |
+| **类型**  | Hash（字段级 TTL，需 Redis 7.4+ `hsetex` 支持）       |
 | **Field** | JSON 字符串，格式：`{"ip":"10.42.0.232","port":4000}` |
-| **Value** | 该 Game 服当前承载的桌子数 |
-| **TTL** | 字段级 TTL = 15000ms，Game 服每 3 秒刷新一次 |
-| **用途** | 仅用于建桌 / 重建时选服，不参与常规路由 |
+| **Value** | 该 Game 服当前承载的桌子数                            |
+| **TTL**   | 字段级 TTL = 15000ms，Game 服每 3 秒刷新一次          |
+| **用途**  | 仅用于建桌 / 重建时选服，不参与常规路由               |
 
 ```
 game:serverList (Hash)
@@ -269,9 +273,10 @@ sequenceDiagram
     Note over Client: 对客户端透明，感知不到内部重试
 ```
 
-#### 阶段七：Game 重启后持久化恢复
+#### 阶段七：Game 重启后持久化恢复 `（可选增强，当前未实现，持久化时机待定）`
 
 > **前提**：tableId 已与 Game 服物理地址完全解耦，恢复时可调度到**任意**健康 Game 服，只需重新签发 routeToken 即可。持久化写入时机待定（暂以"每次牌桌状态变更时异步写入"为占位描述）。
+> **注意**：普通 AI 练习场宕机后，客户端走 create_table 全新建桌（游戏状态重置）是可接受行为，阶段七是锦上添花的增强，不是当前方案的必要组成部分。
 
 ##### 子流程 A：牌桌状态持久化写入
 
@@ -328,6 +333,7 @@ sequenceDiagram
 ```
 
 > **关键点**：
+>
 > - tableId 保持不变，业务连续性完整保留
 > - 新 routeToken 中的 ip:port 指向新 Game 服，旧 token 自动作废
 > - 选服策略与首次建桌完全相同，无需任何"桌子归属"信息
@@ -339,18 +345,21 @@ sequenceDiagram
 
 #### 复式比赛路由机制总览
 
-复式比赛中 Web 服存在**两类路由来源**，各司其职：
+复式比赛所有路由来自**唯一来源**：Client 携带的 `routeToken`（本地 JWT 验签），**无任何服务端路由表**。
 
-| 路由来源 | 适用场景 | 开销 |
-|---------|---------|------|
-| Client 携带的 `routeToken`（本地 JWT 验签） | `start_hand` 中，Web 向 Game 发 `is_have_table` / `get_table_wait_hero` / `next_game` RPC | 本地 CPU，零网络 |
-| Redis `game:route:{tableId}`（存 ip:port） | `resumeActivity._checkTableExists`；以及宕机重建后更新路由 | 一次 Redis GET |
+| 路由来源                                    | 适用场景                                                                                            | 开销             |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------- | ---------------- |
+| Client 携带的 `routeToken`（本地 JWT 验签） | `startHand` 中所有 Game RPC：`is_have_table` / `get_table_wait_hero` / `next_game` / `create_table` | 本地 CPU，零网络 |
 
-**关键不变量**：每次 `create_table` 成功后，必须**同时**完成两件事：
-1. 写 Redis `game:route:{tableId}` = `{ip, port}`（服务端路由记录）
-2. 向 Client 签发 `routeToken = JWT.sign({ip, port, tableId}, SECRET)`
+**关键不变量**：每次 `create_table` 成功后，向 Client 签发新 routeToken：
 
-两者始终保持一致，互为冗余。
+```
+routeToken = JWT.sign({ ip, port, tableId }, SECRET)
+```
+
+> - `resumeActivity` 是**纯 MySQL 元数据查询**，不接触任何 Game 服，不需要路由信息
+> - `entry.tableId == null`（真首手）时 Client 无 routeToken，`startHand` 走场景一（新建）
+> - `entry.tableId != null` 但 Client 本地 token 丢失时，`startHand` 无法做 is_have_table，直接走场景四重建路径（安全且幂等）
 
 ---
 
@@ -377,12 +386,23 @@ sequenceDiagram
     Web->>Game: RPC create_table(tableId, drillParams, maxHands)
     Game-->>Web: tableInfo（full 快照）
 
-    Web->>Redis: SET game:route:{tableId} {ip, port}（写服务端路由）
     Web->>Web: routeToken = JWT.sign({ip, port, tableId}, SECRET)
     Web->>MySQL: INSERT hand_record（第一手记录）
     Web-->>Client: { tableId, routeToken, tableInfo, dataType:"full" }
     Note over Client: 保存 routeToken，后续所有请求携带
 ```
+
+> ⚠️ **并发安全（首手建桌同样存在）**：同一玩家因网络抖动发出并发重复请求时，两次请求均读到 `entry.tableId == null`，各自生成不同的 tableId 并各自发出 `create_table` RPC，导致两张桌子同时被建出来（其中一张成为游魂桌，永远不可达）。
+>
+> 现有的 `UPDATE entry.tableId = tableId` **不能**防住此问题——两个请求都能成功写入，只是 DB 最终值以最后写入者为准，但两个 `create_table` RPC 都已发出。
+>
+> **推荐解法**：在 `startHand` 入口处统一加 `userId_activityId` 级别的分布式锁，获得锁后立即重读 `entry`，再判断走哪条路径。一把锁覆盖所有场景：
+>
+> - `entry.tableId == null` → 首手新建（场景一）
+> - `entry.tableId != null` + is_have_table 成功 → 重连或 next_game（场景二/三）
+> - `entry.tableId != null` + is_have_table 失败 → 宕机重建（场景四）
+>
+> 每个玩家独立锁（不同 `userId_activityId` 不争抢），锁持有时间约等于一次 RPC 耗时，实际争用概率极低。可复用项目现有分布式锁工具，见 `src/utils/AGENTS.md`。
 
 ---
 
@@ -466,126 +486,119 @@ sequenceDiagram
     participant NewGame as Game(新健康节点)
 
     Client->>Web: POST /start_hand (activityId, routeToken_old)
-    Web->>MySQL: findUserEntry → entry.tableId, entry.completedHandCount
+    Web->>MySQL: findUserEntry → entry.tableId, entry.completedHandCount, currentOrderNo, assignedHands
     Web->>Web: JWT.verify(routeToken_old) → 旧 {ip, port}
 
     Web->>OldGame: RPC is_have_table(tableId)（用旧 ip:port）
     OldGame--xWeb: 连接超时 / 拒绝连接
     Note over Web: tableAlive = false → 走宕机重建路径
 
+    Web->>MySQL: findHandById(assignedHands[currentOrderNo-1]) → drillParams
     Web->>Redis: HGETALL game:serverList → 选新健康 Game 服（带内部重试逻辑）
     Web->>NewGame: RPC create_table(tableId, drillParams, initialTotalHands=completedHandCount)
     Note right of NewGame: initialTotalHands 确保 Game.totalHands 从正确偏移量开始<br/>防止 totalHands >= maxHands 的终止判断出错
     NewGame-->>Web: tableInfo（重建成功，full 快照）
 
-    Web->>Redis: SET game:route:{tableId} {new_ip, new_port}（更新服务端路由记录）
     Web->>Web: routeToken_new = JWT.sign({new_ip, new_port, tableId}, SECRET)
     Web->>MySQL: INSERT hand_record（当前手记录）
     Web-->>Client: { tableId, routeToken(新), tableInfo, dataType:"full" }
     Note over Client: 保存新 routeToken，旧 token 自动作废
 ```
 
-> ⚠️ **并发安全**：多名玩家同时触发宕机重建时，必须对 `tableId` 加分布式锁，防止同一张桌子被建到多个 Game 服上（脑裂）。锁粒度为 `tableId`，锁内只执行一次选服+建桌；后续请求等锁释放后直接读 `game:route:{tableId}` 返回已有路由。
+> ⚠️ **并发安全**：复式比赛每个玩家有独立的 `tableId`，不同玩家之间不存在竞争。需要保护的是**同一玩家**因网络抖动等原因发出的并发/重复 `startHand` 请求——两次请求都检测到 `is_have_table=false`，同时尝试重建同一张桌子（脑裂）。锁粒度为 `tableId`，锁内只执行一次选服+建桌+签发新 token；后续抢锁失败的请求等锁释放后，重新进入 `startHand`，此时 `is_have_table` 在新 Game 服上返回 `exist=true`，根据 `get_table_wait_hero` 的 state 决定走场景二（手牌进行中）或场景三（手牌已结束推进下一手）。
 
 ---
 
-#### 复式比赛场景五：resumeActivity（断线重连入口检测）
+#### 复式比赛场景五：resumeActivity（断线重连入口）
 
-> Client 重新打开 App 时调用，无 routeToken 参与（纯元数据查询）。
-> `_checkTableExists` 使用 Redis `game:route:{tableId}` 而非 routeToken 来路由 RPC。
+> Client 重新打开 App 时调用。**纯 MySQL 元数据查询，不联系任何 Game 服，不需要路由信息。**
+> table 是否存活的检测完全交由后续 `startHand` 在 routeToken 路由时判断（RPC 超时 = 宕机）。
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant Client
     participant Web
-    participant Redis
     participant MySQL
-    participant Game
 
     Client->>Web: GET /resume (activityId)
-    Note over Web: resumeActivity 是元数据查询，不接受 routeToken
-    Web->>MySQL: findUserEntry → entry.status / entry.tableId
+    Web->>MySQL: findUserEntry → entry.status / entry.tableId / currentOrderNo
 
     alt entry.status == 'completed'
         Web-->>Client: { status:'completed', totalWinLossBb, myRank }
     else entry.status == 'playing'
         Web->>MySQL: findPlayingHandRecord(entry.id)
 
-        alt 无进行中 hand_record
-            Web-->>Client: { status:'playing', tableExists:false }
-            Note over Client: 调 start_hand 开新手（无 routeToken，走场景一）
-        else 有进行中 hand_record
-            Web->>Redis: GET game:route:{tableId} → {ip, port}（服务端路由查询）
-            Web->>Game: RPC is_have_table(tableId)
-
-            alt Game 响应 exist=true（正常断线）
-                Web-->>Client: { status:'playing', tableId, tableExists:true }
-                Note over Client: 已有 routeToken，调 start_hand(routeToken) 走场景二重连
-            else Game 超时 / exist=false（宕机）
-                Web-->>Client: { status:'playing', tableId, tableExists:false }
-                Note over Client: 已有旧 routeToken，调 start_hand(routeToken_old) 走场景四重建
-            end
+        alt entry.tableId == null（真首手，从未建桌）
+            Web-->>Client: { status:'playing', currentOrderNo:1, completedHandCount:0, ... }
+            Note over Client: 无 routeToken（首手）→ 调 start_hand（无 token，走场景一新建）
+        else entry.tableId != null 且无进行中 hand_record（上手已完结，等开下一手）
+            Web-->>Client: { status:'playing', tableId, currentOrderNo, completedHandCount, ... }
+            Note over Client: 持有上一手的 routeToken → 调 start_hand(routeToken)<br/>startHand 内 is_have_table 决定走场景三（next_game）或场景四（宕机重建）
+        else entry.tableId != null 且有进行中 hand_record（当前手进行中，断线重连）
+            Web-->>Client: { status:'playing', tableId, currentOrderNo, completedHandCount, ... }
+            Note over Client: 持有 routeToken → 调 start_hand(routeToken)<br/>startHand 内 is_have_table 决定走场景二（重连）或场景四（宕机重建）
         end
     end
 ```
 
----
+> **设计要点**：`resumeActivity` 不再返回 `tableExists` 字段，table 活跃状态由 `startHand` 通过 RPC 实时判断。这消除了 `resumeActivity` 和 `startHand` 之间的双重检测，并彻底去掉服务端路由表依赖。
 
+---
 
 ### 改动范围
 
-| 文件 | 改动内容 | 行数估计 |
-|------|---------|---------|
-| `game_utils.ts` `randTableId` | 改为生成 `tableid_{snowflakeId}` 格式，去掉 IP 编码 | ~3 行 |
-| `game_utils.ts` `getGameServerInfoByTableId` | **删除**（不再从 tableId decode IP）；路由来源改为 routeToken 验签或 Redis 查询 | 删除 ~15 行 |
-| `session_manager.ts` | 删除 `create_table` 后写旧路由逻辑；删除心跳中的路由表刷新 | 减少 ~15 行 |
-| Web 层公共路由工具 | 新增 `signRouteToken(ip, port, tableId)`、`verifyRouteToken(token)` | ~15 行 |
-| Web 层公共路由工具 | 新增 `writeRouteRecord(tableId, ip, port)`、`readRouteRecord(tableId)` — 读写 Redis `game:route:{tableId}` | ~10 行 |
-| `duplicate-match/service.ts` `rpcCreateDuplicateMatchTable` | 移除 `getGameServerInfoByTableId` 调用；改为接收显式 `{ip, port}` 参数 | ~5 行 |
-| `duplicate-match/service.ts` `rpcNextGameDuplicateMatch` | 同上 | ~5 行 |
-| `duplicate-match/service.ts` `rpcGetTableWaitHero` | 同上 | ~5 行 |
-| `duplicate-match/service.ts` `_checkTableExists` | 改为从 Redis `game:route:{tableId}` 读取 ip:port（供 `resumeActivity` 使用） | ~5 行 |
-| `duplicate-match/service.ts` `startHand` | 接收客户端传入的 `routeToken`；`create_table` 成功后写 Redis 路由 + 签发新 token；宕机重建加分布式锁 | ~25 行 |
-| API 响应结构 | `start_hand` 响应增加 `routeToken` 字段 | ~3 行 |
-| Client 协议 | `start_hand` 请求增加 `routeToken?` 字段（首手为空，后续必填） | 协议变更 |
+| 文件                                                        | 改动内容                                                                                                        | 行数估计    |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- | ----------- |
+| `game_utils.ts` `randTableId`                               | 改为生成 `tableid_{snowflakeId}` 格式，去掉 IP 编码                                                             | ~3 行       |
+| `game_utils.ts` `getGameServerInfoByTableId`                | **删除**（不再从 tableId decode IP）                                                                            | 删除 ~15 行 |
+| `session_manager.ts`                                        | 删除 `create_table` 后写旧路由逻辑；删除心跳中的路由表刷新                                                      | 减少 ~15 行 |
+| Web 层公共路由工具                                          | 新增 `signRouteToken(ip, port, tableId)`、`verifyRouteToken(token)`                                             | ~15 行      |
+| `duplicate-match/service.ts` `rpcCreateDuplicateMatchTable` | 移除 `getGameServerInfoByTableId` 调用；改为接收显式 `{ip, port}` 参数                                          | ~5 行       |
+| `duplicate-match/service.ts` `rpcNextGameDuplicateMatch`    | 同上                                                                                                            | ~5 行       |
+| `duplicate-match/service.ts` `rpcGetTableWaitHero`          | 同上                                                                                                            | ~5 行       |
+| `duplicate-match/service.ts` `_checkTableExists`            | **删除**（`resumeActivity` 不再检测 table 存活，该方法废弃）                                                    | 删除 ~30 行 |
+| `duplicate-match/service.ts` `startHand`                    | 接收客户端传入的 `routeToken`；无 token 时直接走重建路径；`create_table` 成功后签发新 token；宕机重建加分布式锁 | ~20 行      |
+| `duplicate-match/service.ts` `resumeActivity`               | 去掉 `_checkTableExists` 调用；去掉 `tableExists` 字段；退化为纯 MySQL 查询                                     | 减少 ~15 行 |
+| API 响应结构                                                | `start_hand` 响应增加 `routeToken` 字段；`resume` 响应移除 `tableExists` 字段                                   | ~3 行       |
+| Client 协议                                                 | `start_hand` 请求增加 `routeToken?` 字段（首手或 token 丢失时为空，其余必填）                                   | 协议变更    |
 
 > ⚠️ **注意**：
-> - 需要和客户端协调接口变更（新增 `routeToken` 字段）。
-> - Redis `game:route:{tableId}` 的 TTL 需根据比赛时长设定，建议 `max(活动endTime, 当前时间) + 24h`。
+>
+> - 需要和客户端协调接口变更（新增/移除字段）。
 > - `tableId` 级别的分布式锁（用于宕机重建并发保护）可复用项目现有分布式锁工具，见 `src/utils/AGENTS.md`。
 
 ### 优劣
 
-| 优点 | 缺点 |
-|------|------|
-| Client 发起的 action 零 Redis 查询（本地验签） | 需要客户端配合携带 routeToken（接口变更）|
-| tableId 与物理 IP 完全解耦，纯业务标识 | routeToken 需要签名机制，引入密钥管理 |
-| 心跳逻辑简洁（只维护 serverList） | 内网 IP:port 经 JWT 传至客户端（建议加密 payload）|
-| 宕机检测最直接（RPC 超时即确认） | 更换 Secret 时所有存量 token 立即失效，需 key rotation |
-| 宕机重建可调度到任意健康 Game 服，无 Pod 归属约束 | 服务端主动 RPC（resumeActivity）仍需一次 Redis `game:route` 查询 |
-| 双轨路由（routeToken + Redis game:route）互为冗余，单点失效不影响另一侧 | 宕机重建并发场景需分布式锁，引入额外复杂度 |
+| 优点                                                 | 缺点                                                   |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| 所有路由零 Redis 查询，仅本地 JWT 验签               | 需要客户端配合携带 routeToken（接口变更）              |
+| tableId 与物理 IP 完全解耦，纯业务标识               | routeToken 需要签名机制，引入密钥管理                  |
+| 心跳逻辑极简（只维护 serverList，无路由表）          | 内网 IP:port 经 JWT 传至客户端（建议加密 payload）     |
+| 宕机检测最直接（RPC 超时即确认）                     | 更换 Secret 时所有存量 token 立即失效，需 key rotation |
+| 宕机重建可调度到任意健康 Game 服，无 Pod 归属约束    | 宕机重建并发场景需分布式锁，引入额外复杂度             |
+| `resumeActivity` 退化为纯 MySQL 查询，无 Game 服依赖 | —                                                      |
 
 ---
 
 ## 综合对比
 
-| 维度 | 方案一（K8s Service ClusterIP）| 方案二（客户端携带路由 Token）|
-|------|------|------|
-| **tableId 格式** | 不变（依然含 IP 前缀）| **`tableid_{snowflakeId}`，去掉 IP 前缀** |
-| **数据库迁移** | 不需要 | 不需要 |
-| **代码改动量** | 极小（1行）| 中（~46行 + 客户端协议）|
-| **K8s 运维改动** | 需要（配置 Service + env 注入）| 不需要 |
-| **每次 action Redis 查询** | 无 | **无（本地验签）**|
-| **路由准确性** | 最高（K8s 保障）| 高（依赖 RPC 超时）|
-| **宕机检测速度** | 即时（K8s 探活）| 快（RPC 直接超时）|
-| **路由表依赖** | 无 | **无（不需要路由表）**|
-| **心跳维护复杂度** | 低 | **低（只有 serverList 一张表）**|
-| **重建逻辑复杂度** | 无 | **低（一个场景）**|
-| **客户端协议变更** | 无 | **需要（增加 routeToken 字段）**|
-| **普通模式影响** | 无 | 无 |
-| **长期可维护性** | 高 | 高 |
-| **适用场景** | 有 K8s 运维资源 | 不动 K8s，追求零 Redis 路由查询 |
+| 维度                       | 方案一（K8s Service ClusterIP） | 方案二（客户端携带路由 Token）                      |
+| -------------------------- | ------------------------------- | --------------------------------------------------- |
+| **tableId 格式**           | 不变（依然含 IP 前缀）          | **`tableid_{snowflakeId}`，去掉 IP 前缀**           |
+| **数据库迁移**             | 不需要                          | 不需要                                              |
+| **代码改动量**             | 极小（1 行）                    | 中（~46 行 + 客户端协议）                           |
+| **K8s 运维改动**           | 需要（配置 Service + env 注入） | 不需要                                              |
+| **每次 action Redis 查询** | 无                              | **无（本地验签）**                                  |
+| **路由准确性**             | 最高（K8s 保障）                | 高（依赖 RPC 超时）                                 |
+| **宕机检测速度**           | 即时（K8s 探活）                | 快（RPC 直接超时）                                  |
+| **路由表依赖**             | 无                              | **无（不需要路由表）**                              |
+| **心跳维护复杂度**         | 低                              | **低（只有 serverList 一张表）**                    |
+| **重建逻辑复杂度**         | 无                              | **低（宕机场景统一入口，复式比赛有 5 个状态分支）** |
+| **客户端协议变更**         | 无                              | **需要（增加 routeToken 字段）**                    |
+| **普通模式影响**           | 无                              | 无                                                  |
+| **长期可维护性**           | 高                              | 高                                                  |
+| **适用场景**               | 有 K8s 运维资源                 | 不动 K8s，追求零 Redis 路由查询                     |
 
 ### 推荐策略
 
