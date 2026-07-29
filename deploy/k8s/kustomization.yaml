@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  # Copy secret.example.yaml to secret.yaml, replace every placeholder, then
+  # uncomment the next line before applying this kustomization.
+  - secret.yaml
+  - mysql.yaml
+  - redis.yaml
+  - api.yaml
+  - web.yaml
+  - ingress.yaml

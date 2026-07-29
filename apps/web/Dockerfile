@@ -14,16 +14,21 @@ FROM oven/bun:1-alpine AS builder
 
 WORKDIR /workspace
 
-# 复制依赖清单（层缓存）
+# 复制各 workspace 的 package.json（需与 bun.lock 中的 workspaces 对齐）
 COPY package.json bun.lock ./
 COPY packages/shared/package.json ./packages/shared/
+COPY apps/api/package.json ./apps/api/
 COPY apps/web/package.json ./apps/web/
 
 RUN bun install --frozen-lockfile
 
-# 复制源码
+# 复制源码（不要 COPY 整个 apps/web/，否则会覆盖 bun 装好的 node_modules）
+COPY tsconfig.json ./
 COPY packages/shared/ ./packages/shared/
-COPY apps/web/ ./apps/web/
+COPY apps/web/index.html apps/web/vite.config.ts ./apps/web/
+COPY apps/web/tsconfig.json apps/web/tsconfig.app.json apps/web/tsconfig.node.json ./apps/web/
+COPY apps/web/src ./apps/web/src
+COPY apps/web/public ./apps/web/public
 
 # 构建生产 bundle
 WORKDIR /workspace/apps/web
