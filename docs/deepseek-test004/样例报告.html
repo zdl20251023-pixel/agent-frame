@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>洗牌均匀性验证报告（样例预览）</title>
+<style>
+  :root { --ink:#1a1a1a; --muted:#666; --line:#e3e3e3; }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; color: var(--ink); margin: 0; background: #fafafa; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 24px 20px 80px; }
+  .banner { background: #fff4e0; border: 1px solid #f0c36a; color: #8a5b00; padding: 10px 14px; border-radius: 8px; font-weight: 600; margin-bottom: 18px; }
+  h1 { font-size: 26px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin-bottom: 22px; }
+  section { background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 18px; }
+  h2 { font-size: 19px; margin: 0 0 4px; }
+  h3 { font-size: 15px; margin: 0 0 10px; }
+  h4 { font-size: 13px; margin: 14px 0 6px; color: var(--muted); }
+  .muted { color: var(--muted); font-size: 13px; }
+  .conclusion { background: #eefaf0; border-color: #bce0c4; }
+  .conclusion .big { font-size: 17px; font-weight: 700; color: #157347; }
+  .note { background: #f6f8fb; border-left: 3px solid #5b8dd9; padding: 10px 14px; border-radius: 6px; font-size: 13px; margin: 10px 0; }
+  .formula { background: #fbfbfb; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; font-size: 13px; margin: 8px 0; line-height: 1.9; }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .btn { border: 1px solid #ccc; background: #fff; border-radius: 6px; padding: 6px 14px; cursor: pointer; font-size: 13px; }
+  .btn.active { background: #1a1a1a; color: #fff; border-color: #1a1a1a; }
+  .legend { display: flex; align-items: center; gap: 6px; margin: 6px 0; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .sw { width: 16px; height: 16px; border-radius: 3px; border: 1px solid #ddd; }
+  table.matrix { border-collapse: collapse; }
+  table.matrix th { font-size: 12px; font-weight: 600; color: var(--muted); padding: 2px 4px; text-align: center; }
+  table.matrix td.cell { text-align: center; cursor: pointer; transition: transform .05s; }
+  table.matrix td.cell:hover { outline: 2px solid #000; }
+  #hm169 td.cell { width: 44px; height: 40px; font-size: 11px; }
+  #hm52 td.cell { width: 15px; height: 15px; }
+  .detail { border: 1px dashed #bbb; border-radius: 10px; padding: 14px 16px; margin-top: 12px; background: #fcfcfc; min-height: 40px; }
+  .detail .empty { color: #999; font-size: 13px; }
+  table.kv { border-collapse: collapse; font-size: 13px; }
+  table.kv td, table.kv th { border: 1px solid var(--line); padding: 5px 10px; text-align: left; }
+  table.kv td:first-child, table.kv th:first-child { color: var(--muted); }
+  .overview { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .overview th, .overview td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+  .overview th { background: #f5f5f5; }
+  .pass { color: #157347; font-weight: 700; }
+  .scroll { overflow-x: auto; }
+  a { color: #1a56c0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="banner">⚠ 样例数据 · 仅供预览交互与版式效果，非真实验证结果</div>
+
+  <h1>洗牌均匀性验证报告</h1>
+  <div class="sub">验证对象：Fisher-Yates 洗牌（crypto.randomInt） · 样本：1万 / 5万 / 10万 / 50万 / 100万 手</div>
+
+  <section class="conclusion">
+    <h2>结论</h2>
+    <div class="big">样例结论占位：在本次样本范围内，未发现洗牌不均匀的证据。</div>
+    <div class="muted">（真实结论将在验证完成后生成，此处仅演示版式。）</div>
+  </section>
+
+  <section>
+    <h2>四角度总览</h2>
+    <table class="overview">
+      <tr><th>角度</th><th>验证内容</th><th>结果</th><th>一句话说明</th></tr>
+      <tr><td>一</td><td>算法正确性</td><td class="pass">通过</td><td>代码符合 Fisher-Yates，全部牌堆合法</td></tr>
+      <tr><td>二</td><td>随机性</td><td class="pass">通过</td><td>随机数均匀、前后无依赖</td></tr>
+      <tr><td>三</td><td>单张牌在不同位置</td><td class="pass">正常</td><td>2704 格越线数与随机预期一致，无持续偏差</td></tr>
+      <tr><td>四</td><td>169 种两牌分布</td><td class="pass">正常</td><td>越线格数在随机范围内，无持续偏高/偏低</td></tr>
+    </table>
+    <div class="muted">（以上为占位示例，真实结果由验证脚本产出。）</div>
+  </section>
+
+  <section>
+    <h2>判断依据（怎么判断"均匀不均匀"）</h2>
+    <div class="formula">
+      <b>理论次数</b> μ = n × p　　　<b>标准差</b> σ = √( n × p × (1 − p) )<br>
+      <b>±3σ 关注区间</b> = [ μ − 3σ, μ + 3σ ]　　　<b>z-score</b>（带符号）= (实际 − 理论) ÷ σ
+    </div>
+
+    <h3>为什么用 3σ 作为"关注线"</h3>
+    <div class="note">
+      1. 3σ 是统计过程控制（SPC）的标准做法，Shewhart 控制图自 1931 年沿用至今，属于成熟、公开的行业惯例 ——
+      <a href="https://itl.nist.gov/div898/handbook/pmc/section3/pmc32.htm" target="_blank" rel="noopener">NIST 工程统计手册：控制图 3σ 限</a>。<br>
+      2. 正态分布下约 99.73% 落在 ±3σ 内，"越出 3σ"的概率约 0.27%（即约 1/370），这就是"越线"的随机背景概率（68–95–99.7 经验法则）。<br>
+      3. 二项分布能用正态近似的前提是 np ≥ 5 且 n(1−p) ≥ 5 ——
+      <a href="https://www.itl.nist.gov/div898/handbook/eda/section3/eda366i.htm" target="_blank" rel="noopener">NIST：二项分布</a>。
+      本方案最小 np ≈ 30（1 万手 × 同花牌概率），远超 5，近似成立。
+    </div>
+
+    <h3>核心直觉（替代 p 值，一眼看懂）</h3>
+    <div class="note">
+      <b>真偏差</b>的相对偏差 % 不随样本增大而缩小；<b>随机噪声</b>的相对偏差 % 随样本增大自动缩小（样本 ×100 → 缩小约 10 倍）。<br>
+      所以用 5 档样本看同一个格子是否<b>"持续越线且不收敛"</b>——这是判定"真偏差"的关键。
+    </div>
+
+    <div class="muted">
+      ⚠ 边界：3σ 是"关注线"不是"判决线"。越线只代表"值得多看两眼"，正式判定靠两点——① 越线格子数是否远超纯随机预期（约 0.27% × 格子数）；② 同一格是否跨 5 档样本持续越线且不收敛。
+    </div>
+  </section>
+
+  <section>
+    <h2>角度一：验证算法</h2>
+    <h3>1. 代码走查（对/错）</h3>
+    <table class="kv">
+      <tr><td>循环边界</td><td><b>for i = 51 … 1</b>（从数组末尾倒数到第 1 位）</td><td class="pass">✓ 一致</td></tr>
+      <tr><td>随机索引范围</td><td><b>randomInt(0, i+1)</b>，即在 [0, i] 等概率选 j</td><td class="pass">✓ 一致</td></tr>
+      <tr><td>交换逻辑</td><td><b>交换 deck[i] 与 deck[j]</b></td><td class="pass">✓ 一致</td></tr>
+      <tr><td>结论</td><td colspan="2">与标准 Fisher-Yates 一致 —— <a href="https://algs4.cs.princeton.edu/code/javadoc/edu/princeton/cs/algs4/Knuth.html" target="_blank" rel="noopener">Knuth Shuffle 参考</a>。任意完整牌序概率 = 1/52!。</td></tr>
+    </table>
+    <h3>2. 牌堆合法性（运行时校验）</h3>
+    <table class="kv">
+      <tr><th>样本</th><th>副牌数</th><th>非法牌堆（缺张/重复/非法牌）</th></tr>
+      <tr><td>1万</td><td>10,000</td><td class="pass">0</td></tr>
+      <tr><td>5万</td><td>50,000</td><td class="pass">0</td></tr>
+      <tr><td>10万</td><td>100,000</td><td class="pass">0</td></tr>
+      <tr><td>50万</td><td>500,000</td><td class="pass">0</td></tr>
+      <tr><td>100万</td><td>1,000,000</td><td class="pass">0</td></tr>
+    </table>
+    <div class="muted">判定：出现任意 1 副非法 → 直接失败；全部为 0 → 通过。</div>
+  </section>
+
+  <section>
+    <h2>角度二：验证随机性（随机数源均匀 + 独立）</h2>
+    <p class="muted">随机源为 <a href="https://nodejs.org/api/crypto.html#cryptorandomintmin-max-callback" target="_blank" rel="noopener">Node.js crypto.randomInt(min, max)</a>，官方保证 [min, max) 内均匀、且无模偏差。以下为实测冒烟检查。</p>
+
+    <h3>1. 均匀性（以每副牌第一次 randomInt(0, 52) 为例）</h3>
+    <table class="kv">
+      <tr><th>样本</th><th>每次取值理论次数 μ</th><th>σ</th><th>最极端取值</th><th>相对偏差</th><th>z</th><th>判定</th></tr>
+      <tr><td>100万</td><td>19,230.8</td><td>137.3</td><td>19,510（样例）</td><td>+1.45%</td><td>+2.03</td><td class="pass">未越线</td></tr>
+    </table>
+    <div class="muted">52 个取值均落在 μ ± 3σ（约 18,819 ~ 19,643）内 → 均匀；其余 50 步（范围 2~51）同理检查，均通过。</div>
+
+    <h3>2. 独立性冒烟测试（相邻两次是否相等）</h3>
+    <div class="note">
+      只看每副牌<b>第一次</b> randomInt(0,52) 的返回值，排成一列 x₁, x₂, …, xₙ，统计<b>相邻两项相等</b>的对数（xₖ == xₖ₊₁）。<br>
+      若独立：相等概率 = 1/52，理论相等对数 μ = (N−1)/52。
+    </div>
+    <table class="kv">
+      <tr><th>样本</th><th>相邻对数</th><th>理论相等 μ</th><th>±3σ 区间</th><th>实际相等（样例）</th><th>判定</th></tr>
+      <tr><td>100万</td><td>999,999</td><td>19,231</td><td>18,819 ~ 19,643</td><td>19,258</td><td class="pass">通过</td></tr>
+    </table>
+    <div class="muted">实际相等对数落在 μ ± 3σ 内 → 无明显前后依赖。人话：独立时"连续两个随机数撞车"概率就是 1/52，数一下实际撞了多少次，接近理论即正常。</div>
+  </section>
+
+  <section>
+    <h2>样本量选择（作用于角度三、四的热力图）</h2>
+    <div class="toolbar" id="sampleToolbar"></div>
+    <div class="muted">切换样本量时，两处热力图同时更新；颜色按 z-score 固定标尺，跨样本一致可比。</div>
+  </section>
+
+  <section>
+    <h2>角度三：单张牌在不同位置（52×52）</h2>
+    <div class="muted">52 张牌 × 52 位置 = 2704 个格子，每格理论概率 1/52。行 = 52 张牌，列 = 52 个位置。颜色按 z-score，|z|&gt;3 加粗边框（越线）。点击格子看明细。</div>
+    <div class="legend">
+      <span>偏低 ←</span>
+      <span class="sw" style="background:#0033cc"></span>
+      <span class="sw" style="background:#85aaff"></span>
+      <span class="sw" style="background:#c6d8ff"></span>
+      <span class="sw" style="background:#f0f5ff"></span>
+      <span class="sw" style="background:#fff"></span>
+      <span class="sw" style="background:#fff0f0"></span>
+      <span class="sw" style="background:#ffc9c9"></span>
+      <span class="sw" style="background:#ff8585"></span>
+      <span class="sw" style="background:#d00000"></span>
+      <span>→ 偏高</span>
+      <span style="margin-left:10px">|z|：≤1 / 1–2 / 2–3 / &gt;3（&gt;3 加粗边框=越线）</span>
+    </div>
+    <div class="muted">越线预期：2704 × 0.27% ≈ 7 个，属正常随机波动；同一格跨 5 档持续越线才可疑。</div>
+    <div class="scroll"><table class="matrix" id="hm52"></table></div>
+    <div class="detail" id="detail52"><span class="empty">点击上方任意格子查看该"牌 × 位置"明细。</span></div>
+  </section>
+
+  <section>
+    <h2>角度四：169 种两牌分布（13×13）</h2>
+    <div class="muted">对角线=对子（6/1326），右上半区=同花牌（4/1326），左下半区=非同花牌（12/1326）。格子内数字 = z-score。点击格子看明细。</div>
+    <table class="kv">
+      <tr><th>类型</th><th>组合数</th><th>概率</th><th>100万手理论 μ</th><th>σ</th><th>±3σ 区间</th></tr>
+      <tr><td>口袋对子</td><td>6</td><td>0.4525%</td><td>4524.89</td><td>67.11</td><td>4324 ~ 4726</td></tr>
+      <tr><td>同花牌</td><td>4</td><td>0.3017%</td><td>3016.59</td><td>54.82</td><td>2852 ~ 3181</td></tr>
+      <tr><td>非同花牌</td><td>12</td><td>0.9050%</td><td>9049.77</td><td>94.70</td><td>8766 ~ 9334</td></tr>
+    </table>
+    <div class="muted">越线预期：169 × 0.27% ≈ 0.46 个（通常 0~2 个）；同一类型跨 5 档持续越线且不收敛才可疑。</div>
+    <div class="scroll"><table class="matrix" id="hm169"></table></div>
+    <div class="detail" id="detail169"><span class="empty">点击上方任意格子查看该牌型明细。</span></div>
+  </section>
+
+  <section>
+    <h2>参考依据</h2>
+    <table class="kv">
+      <tr><td>Fisher-Yates / Knuth Shuffle</td><td><a href="https://algs4.cs.princeton.edu/code/javadoc/edu/princeton/cs/algs4/Knuth.html" target="_blank" rel="noopener">Princeton Algorithms — Knuth Shuffle</a></td></tr>
+      <tr><td>控制图 3σ 限（Shewhart）</td><td><a href="https://itl.nist.gov/div898/handbook/pmc/section3/pmc32.htm" target="_blank" rel="noopener">NIST — Variables Control Charts</a></td></tr>
+      <tr><td>二项分布 μ/σ 与正态近似（np ≥ 5）</td><td><a href="https://www.itl.nist.gov/div898/handbook/eda/section3/eda366i.htm" target="_blank" rel="noopener">NIST — Binomial Distribution</a></td></tr>
+      <tr><td>随机整数范围与无模偏差</td><td><a href="https://nodejs.org/api/crypto.html#cryptorandomintmin-max-callback" target="_blank" rel="noopener">Node.js — crypto.randomInt</a></td></tr>
+    </table>
+  </section>
+
+</div>
+
+<script>
+"use strict";
+/* ---------------- 模拟数据生成（固定种子，可复现） ---------------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+const rnd = mulberry32(20240101);
+function gauss(){let u=0,v=0;while(u===0)u=rnd();while(v===0)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+
+const RANKS=['A','K','Q','J','T','9','8','7','6','5','4','3','2'];
+const SUITS=['♣','♦','♥','♠'];
+const SAMPLES=[10000,50000,100000,500000,1000000];
+const SAMPLE_LABELS=['1万','5万','10万','50万','100万'];
+
+function cellType(r,c){ return r===c?'pair':(r<c?'suited':'offsuit'); }
+function cellP(r,c){ const t=cellType(r,c); return t==='pair'?6/1326:(t==='suited'?4/1326:12/1326); }
+function cellLabel(r,c){
+  if(r===c) return RANKS[r]+RANKS[c];
+  if(r<c) return RANKS[r]+RANKS[c]+'s';
+  return RANKS[c]+RANKS[r]+'o';
+}
+const BIAS169 = { '0,0':0.05, '1,0':-0.05, '7,7':-0.03, '0,1':0.03 };
+
+function build169(){
+  const D=[];
+  for(let r=0;r<13;r++){D[r]=[];for(let c=0;c<13;c++)D[r][c]=[];}
+  for(let si=0;si<SAMPLES.length;si++){
+    const n=SAMPLES[si];
+    for(let r=0;r<13;r++)for(let c=0;c<13;c++){
+      const p=cellP(r,c), mu=n*p, sigma=Math.sqrt(n*p*(1-p));
+      const bias=BIAS169[(r+','+c)]||0;
+      const actual=Math.max(0, Math.round(mu*(1+bias)+gauss()*sigma));
+      D[r][c][si]={actual,mu,sigma,z:(actual-mu)/sigma,rel:(actual-mu)/mu*100};
+    }
+  }
+  return D;
+}
+function build52(){
+  const D=[];
+  for(let i=0;i<52;i++){D[i]=[];for(let p=0;p<52;p++)D[i][p]=[];}
+  const pp=1/52;
+  for(let si=0;si<SAMPLES.length;si++){
+    const n=SAMPLES[si], mu=n*pp, sigma=Math.sqrt(n*pp*(1-pp));
+    for(let i=0;i<52;i++)for(let p=0;p<52;p++){
+      const actual=Math.max(0, Math.round(mu+gauss()*sigma));
+      D[i][p][si]={actual,mu,sigma,z:(actual-mu)/sigma,rel:(actual-mu)/mu*100};
+    }
+  }
+  return D;
+}
+const D169=build169(), D52=build52();
+
+function colorFor(z){
+  const a=Math.abs(z);
+  const b = a<=1?0 : a<=2?1 : a<=3?2 : 3;
+  const pos = z>=0;
+  const red=['#fff0f0','#ffc9c9','#ff8585','#d00000'];
+  const blue=['#f0f5ff','#c6d8ff','#85aaff','#0033cc'];
+  return pos?red[b]:blue[b];
+}
+function borderFor(z){ return Math.abs(z)>3 ? '2px solid #000' : '1px solid #e0e0e0'; }
+
+let cur=4;
+
+function renderSampleToolbar(){
+  const el=document.getElementById('sampleToolbar');
+  el.innerHTML='';
+  SAMPLES.forEach((n,i)=>{
+    const b=document.createElement('button');
+    b.className='btn'+(i===cur?' active':'');
+    b.textContent=SAMPLE_LABELS[i]+'（'+n.toLocaleString('en-US')+'）';
+    b.onclick=()=>{ cur=i; renderAll(); };
+    el.appendChild(b);
+  });
+}
+
+function render169(){
+  const g=document.getElementById('hm169');
+  let html='<tr><th></th>';
+  for(let c=0;c<13;c++) html+='<th>'+RANKS[c]+'</th>';
+  html+='</tr>';
+  for(let r=0;r<13;r++){
+    html+='<tr><th>'+RANKS[r]+'</th>';
+    for(let c=0;c<13;c++){
+      const d=D169[r][c][cur];
+      html+='<td class="cell" style="background:'+colorFor(d.z)+';border:'+borderFor(d.z)+'" title="'+cellLabel(r,c)+' z='+d.z.toFixed(2)+'" data-r="'+r+'" data-c="'+c+'">'+d.z.toFixed(1)+'</td>';
+    }
+    html+='</tr>';
+  }
+  g.innerHTML=html;
+}
+
+function render52(){
+  const g=document.getElementById('hm52');
+  let html='<tr><th></th>';
+  for(let p=0;p<52;p++) html+='<th>'+(p+1)+'</th>';
+  html+='</tr>';
+  for(let i=0;i<52;i++){
+    const rank=i%13, suit=Math.floor(i/13);
+    const name=RANKS[rank]+SUITS[suit];
+    html+='<tr><th style="white-space:nowrap">'+name+'</th>';
+    for(let p=0;p<52;p++){
+      const d=D52[i][p][cur];
+      html+='<td class="cell" style="background:'+colorFor(d.z)+';border:'+borderFor(d.z)+'" title="'+name+' @位置'+(p+1)+' z='+d.z.toFixed(2)+'" data-i="'+i+'" data-p="'+p+'"></td>';
+    }
+    html+='</tr>';
+  }
+  g.innerHTML=html;
+}
+
+function renderAll(){ renderSampleToolbar(); render169(); render52(); }
+
+function showDetail169(r,c){
+  const label=cellLabel(r,c), d=D169[r][c][cur];
+  const lo=d.mu-3*d.sigma, hi=d.mu+3*d.sigma, cross=Math.abs(d.z)>3;
+  let rows='';
+  for(let k=0;k<SAMPLES.length;k++){
+    const q=D169[r][c][k];
+    rows+='<tr><td>'+SAMPLE_LABELS[k]+'</td><td>'+q.actual+'</td><td>'+q.mu.toFixed(1)+'</td><td>'+q.z.toFixed(2)+'</td><td>'+q.rel.toFixed(2)+'%</td></tr>';
+  }
+  const sign=(d.actual-d.mu)>=0?'+':'';
+  document.getElementById('detail169').innerHTML=
+    '<h3>'+label+' 明细（当前 '+SAMPLE_LABELS[cur]+' 档）</h3>'+
+    '<table class="kv">'+
+    '<tr><td>理论次数 μ</td><td>'+d.mu.toFixed(2)+'</td></tr>'+
+    '<tr><td>实际次数</td><td>'+d.actual+'</td></tr>'+
+    '<tr><td>偏差（实际−理论）</td><td>'+sign+(d.actual-d.mu).toFixed(1)+'</td></tr>'+
+    '<tr><td>相对偏差 %</td><td>'+d.rel.toFixed(2)+'%</td></tr>'+
+    '<tr><td>单个标准差 σ</td><td>'+d.sigma.toFixed(2)+'</td></tr>'+
+    '<tr><td>z-score</td><td>'+d.z.toFixed(2)+'</td></tr>'+
+    '<tr><td>±3σ 关注区间</td><td>'+lo.toFixed(1)+' ~ '+hi.toFixed(1)+'</td></tr>'+
+    '<tr><td>是否越线（|z|&gt;3）</td><td>'+(cross?'<b style="color:#d00000">是</b>':'否')+'</td></tr>'+
+    '</table>'+
+    '<h4>跨 5 档样本（看是否"持续越线且不收敛"）</h4>'+
+    '<table class="kv"><tr><th>样本</th><th>实际</th><th>理论μ</th><th>z</th><th>相对偏差%</th></tr>'+rows+'</table>';
+}
+function showDetail52(i,p){
+  const rank=i%13, suit=Math.floor(i/13), name=RANKS[rank]+SUITS[suit];
+  const d=D52[i][p][cur];
+  const lo=d.mu-3*d.sigma, hi=d.mu+3*d.sigma, cross=Math.abs(d.z)>3;
+  let rows='';
+  for(let k=0;k<SAMPLES.length;k++){
+    const q=D52[i][p][k];
+    rows+='<tr><td>'+SAMPLE_LABELS[k]+'</td><td>'+q.actual+'</td><td>'+q.mu.toFixed(1)+'</td><td>'+q.z.toFixed(2)+'</td><td>'+q.rel.toFixed(2)+'%</td></tr>';
+  }
+  const sign=(d.actual-d.mu)>=0?'+':'';
+  document.getElementById('detail52').innerHTML=
+    '<h3>'+name+' @ 位置'+(p+1)+' 明细（当前 '+SAMPLE_LABELS[cur]+' 档）</h3>'+
+    '<table class="kv">'+
+    '<tr><td>理论次数 μ</td><td>'+d.mu.toFixed(2)+'</td></tr>'+
+    '<tr><td>实际次数</td><td>'+d.actual+'</td></tr>'+
+    '<tr><td>偏差（实际−理论）</td><td>'+sign+(d.actual-d.mu).toFixed(1)+'</td></tr>'+
+    '<tr><td>相对偏差 %</td><td>'+d.rel.toFixed(2)+'%</td></tr>'+
+    '<tr><td>单个标准差 σ</td><td>'+d.sigma.toFixed(2)+'</td></tr>'+
+    '<tr><td>z-score</td><td>'+d.z.toFixed(2)+'</td></tr>'+
+    '<tr><td>±3σ 关注区间</td><td>'+lo.toFixed(1)+' ~ '+hi.toFixed(1)+'</td></tr>'+
+    '<tr><td>是否越线（|z|&gt;3）</td><td>'+(cross?'<b style="color:#d00000">是</b>':'否')+'</td></tr>'+
+    '</table>'+
+    '<h4>跨 5 档样本（看是否"持续越线且不收敛"）</h4>'+
+    '<table class="kv"><tr><th>样本</th><th>实际</th><th>理论μ</th><th>z</th><th>相对偏差%</th></tr>'+rows+'</table>';
+}
+
+document.getElementById('hm169').addEventListener('click',e=>{
+  const td=e.target.closest('td[data-r]'); if(!td) return;
+  showDetail169(+td.dataset.r, +td.dataset.c);
+});
+document.getElementById('hm52').addEventListener('click',e=>{
+  const td=e.target.closest('td[data-i]'); if(!td) return;
+  showDetail52(+td.dataset.i, +td.dataset.p);
+});
+
+renderAll();
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "name": "shuffle-verification",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "verify": "node src/verify.ts",
+    "repeat:200": "node src/repeated-run.ts",
+    "report": "node src/regenerate.ts",
+    "test": "node --test tests/*.test.ts"
+  }
+}
